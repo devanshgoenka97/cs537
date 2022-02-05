@@ -88,12 +88,14 @@ int main(int argc, char** argv)
             continue;
         }
 
-        // Comparing the the sizeof(search) bytes of the search string with the cleaned up input string
+        // Comparing the the strlen(search) bytes of the search string with the cleaned up input string
         if (strncasecmp(search, cmp_string, size_search) == 0)
         {
             printf("%s\n", buffer);
         }
     }
+
+    fclose(fp);
 
     return 0;
 }
