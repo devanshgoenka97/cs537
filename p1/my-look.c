@@ -6,7 +6,7 @@
 #include<ctype.h>
 #include<string.h>
 
-#define BUFFERSIZE 255
+#define BUFFERSIZE 256
 
 int main(int argc, char** argv) {
     // Setting getopt()'s error to 0, to disable printing the default error
@@ -21,8 +21,8 @@ int main(int argc, char** argv) {
     while ((opt = getopt(argc, argv, "f:Vh")) != -1) {
         switch (opt) {
             case 'h':
-                printf("my-look: usage 'my-look search-term' from stdin." +
-                "use -f to specify file to read from" +
+                printf("my-look: usage 'my-look search-term' from stdin."
+                "use -f to specify file to read from"
                 "and -V for version information\n");
                 return 0;
             case 'V':
@@ -44,7 +44,23 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    char* search = argv[optind];
+    char* tmp_search = argv[optind];
+
+    char search[BUFFERSIZE];
+
+    // Convert search string to only alphanumeric characters
+    int i = 0;
+    int j = 0;
+    while (tmp_search[i] != '\0') {
+        if (isalnum(tmp_search[i])) {
+            search[j++] = tmp_search[i];
+        }
+        i++;
+    }
+
+    // Add null terminating character at the end
+    search[j] = '\0';
+
     int size_search = strlen(search);
 
     // Defaulting to the stdin FILE* for input
