@@ -3,6 +3,7 @@
 #include "defs.h"
 #include "date.h"
 #include "param.h"
+#include "iostat.h"
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
@@ -40,6 +41,23 @@ int
 sys_getpid(void)
 {
   return myproc()->pid;
+}
+
+int
+sys_getiocounts(void)
+{
+  struct iostat* iocount;
+  
+  if(argptr(0, (void*)&iocount, sizeof(*iocount)) < 0)
+    return -1;
+
+  struct proc* currproc = myproc();
+
+  // Populate the struct with the current values.
+  iocount->readcount = currproc->rcount;
+  iocount->writecount = currproc->wcount;
+
+  return 0;
 }
 
 int

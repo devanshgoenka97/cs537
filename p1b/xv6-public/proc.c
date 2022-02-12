@@ -98,6 +98,10 @@ found:
   }
   sp = p->kstack + KSTACKSIZE;
 
+  // Initialize IO counts to 0.
+  p->rcount = 0;
+  p->wcount = 0;
+
   // Leave room for trap frame.
   sp -= sizeof *p->tf;
   p->tf = (struct trapframe*)sp;

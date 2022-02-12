@@ -75,6 +75,10 @@ sys_read(void)
 
   if(argfd(0, 0, &f) < 0 || argint(2, &n) < 0 || argptr(1, &p, n) < 0)
     return -1;
+
+  struct proc* currproc = myproc();
+  currproc->rcount += 1;
+
   return fileread(f, p, n);
 }
 
@@ -87,6 +91,10 @@ sys_write(void)
 
   if(argfd(0, 0, &f) < 0 || argint(2, &n) < 0 || argptr(1, &p, n) < 0)
     return -1;
+
+  struct proc* currproc = myproc();
+  currproc->wcount += 1;
+
   return filewrite(f, p, n);
 }
 
