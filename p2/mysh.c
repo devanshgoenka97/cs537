@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
 
     // Printing the prompt to be displayed
     const char* prompt = "mysh> ";
-    printf("%s", prompt);
+    write(STDOUT_FILENO, prompt, strlen(prompt));
 
     // Reading user input until Ctrl + D signal sent
     while (fgets(buffer, BUFFERSIZE, fp) != NULL) {
@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
 
         // If the buffer is just a new line, skip it
         if (strlen(buffer) == 0) {
-            printf("%s", prompt);
+            write(STDOUT_FILENO, prompt, strlen(prompt));
             continue;
         }
 
@@ -65,15 +65,17 @@ int main(int argc, char** argv) {
         int is_redirect = 0;
         char* redirect_file = NULL;
 
+        int execute_command = 1;
+
         while(token != NULL){
 
-            // Token is just a space, check the next token
+            // Handle extra spaces
             if (strcmp(token, delim) == 0){
                 token = strtok(NULL, delim);
                 continue;
             }
 
-            // Redirect passed to mysh
+            // Handle redirect
             if (strcmp(token, redirect) == 0){
                 // Next token should be the file name
                 is_redirect = 1;
@@ -81,9 +83,9 @@ int main(int argc, char** argv) {
 
                 if (strtok(NULL, delim) != NULL){
                     // This should not happen, bad use of redirection
-                    perror("Redirection error\n");
-                    printf("%s", prompt);
-                    continue;
+                    write(STDERR_FILENO, "Redirection misformatted.\n", strlen("Redirection misformatted.\n"));
+                    execute_command = 0;
+                    break;
                 }
 
                 break;
@@ -96,7 +98,12 @@ int main(int argc, char** argv) {
 
         // If all spaces in shell input
         if(i == 0){
-            printf("%s", prompt);
+            execute_command = 0;
+        }
+
+        if (!execute_command) {
+            // Printing the prompt again
+            write(STDOUT_FILENO, prompt, strlen(prompt));
             continue;
         }
 
@@ -109,29 +116,36 @@ int main(int argc, char** argv) {
         if(pid == 0)
         {
             // Inside child
-            if (is_redirect){
+            if (is_redirect) {
                 close(STDOUT_FILENO);
                 int opfile = open(redirect_file, O_RDWR | O_CREAT, 0666);
             
                 if (opfile < 0){
-                    write(STDERR_FILENO, "Error\n", strlen("Error\n"));
+                    // Printing the correct error message to STDERR
+                    char buffer[1024];
+                    size_t length = snprintf(buffer, sizeof(buffer), "Cannot write to file %s.\n", redirect_file);
+                    write(STDERR_FILENO, buffer, length);
                 }
             }
 
             int rc_child = execv(argv[0], argv);
-            if (rc_child != 0){
-                write(STDERR_FILENO, "Error\n", strlen("Error\n"));
+
+            if (rc_child != 0) {
+                // Printing the correct error message to STDERR
+                char buffer[1024];
+                size_t length = snprintf(buffer, sizeof(buffer), "%s: Command not found.\n", argv[0]);
+                write(STDERR_FILENO, buffer, length);
                 fclose(stdin);
                 exit(1);
             }
         }
-        else{
+        else {
             // Inside parent
             waitpid(pid, &status, 0);
         }
 
         // Printing the prompt again
-        printf("%s", prompt);
+        write(STDOUT_FILENO, prompt, strlen(prompt));
     }
 
     // Extra line to clean output to the original shell
