@@ -16,7 +16,12 @@ int main(int argc, char** argv) {
     char* file_name = NULL;
     int is_interactive = 1;
 
-    if(argc == 2){
+    if (argc > 2) {
+        write(STDERR_FILENO, "Usage: mysh [batch-file]\n", strlen("Usage: mysh [batch-file]\n"));
+        exit(1);
+    }
+
+    if (argc == 2) {
         is_interactive = 0;
         file_name = argv[1];
     }
@@ -28,7 +33,9 @@ int main(int argc, char** argv) {
         // Read from the batch file
         fp = fopen(file_name, "r");
         if (fp == NULL) {
-            printf("mysh: cannot open file\n");
+            char buffer[1024];
+            size_t length = snprintf(buffer, sizeof(buffer), "Error: Cannot open file %s.\n", file_name);
+            write(STDERR_FILENO, buffer, length);
             exit(1);
         }
     }
@@ -37,7 +44,10 @@ int main(int argc, char** argv) {
 
     // Printing the prompt to be displayed
     const char* prompt = "mysh> ";
-    write(STDOUT_FILENO, prompt, strlen(prompt));
+
+    if (is_interactive) {
+        write(STDOUT_FILENO, prompt, strlen(prompt));
+    }
 
     // Reading user input until Ctrl + D signal sent
     while (fgets(buffer, BUFFERSIZE, fp) != NULL) {
@@ -81,7 +91,7 @@ int main(int argc, char** argv) {
                 is_redirect = 1;
                 redirect_file = strtok(NULL, delim);
 
-                if (strtok(NULL, delim) != NULL){
+                if (strcmp(redirect_file, redirect) == 0 || strtok(NULL, delim) != NULL){
                     // This should not happen, bad use of redirection
                     write(STDERR_FILENO, "Redirection misformatted.\n", strlen("Redirection misformatted.\n"));
                     execute_command = 0;
@@ -103,7 +113,9 @@ int main(int argc, char** argv) {
 
         if (!execute_command) {
             // Printing the prompt again
-            write(STDOUT_FILENO, prompt, strlen(prompt));
+            if (is_interactive) {
+                write(STDOUT_FILENO, prompt, strlen(prompt));
+            }
             continue;
         }
 
@@ -145,10 +157,15 @@ int main(int argc, char** argv) {
         }
 
         // Printing the prompt again
-        write(STDOUT_FILENO, prompt, strlen(prompt));
+        if (is_interactive) {
+            write(STDOUT_FILENO, prompt, strlen(prompt));
+        }
     }
 
     // Extra line to clean output to the original shell
-    printf("\n");
+    if (is_interactive) { 
+        printf("\n");
+    }
+    
     return 0;
 }
