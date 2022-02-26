@@ -277,6 +277,12 @@ int main(int argc, char** argv) {
                 }
             }
 
+            fflush(stdout);
+
+            if (is_interactive) {
+                write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
+            }
+
             continue;
         }
         else if (strcmp(argv[0], "unalias") == 0) {
@@ -313,7 +319,29 @@ int main(int argc, char** argv) {
                     temp = temp->next;
                 }
             }
+
+            if (is_interactive) {
+                write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
+            }
+
             continue;
+        }
+
+        // Traverse aliased linked list to check if any alias is present
+        struct node* t = HEAD;
+        while (t != NULL) {
+            if (strcmp(t->name, argv[0]) == 0) {
+                // Found an alias for the command, re-populate argv
+                int i = 0;
+                int j = 0;
+                while ( t->args[j] != NULL) {
+                    argv[i++] = t->args[j++];
+                }
+                argv[i] = NULL;
+
+                break;
+            }
+            t = t->next;
         }
 
         int pid = fork();
