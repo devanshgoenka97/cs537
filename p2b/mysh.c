@@ -241,10 +241,12 @@ int main(int argc, char** argv) {
                     new_node->next = HEAD;
                     HEAD = new_node;
                 }
+
                 HEAD->name = strdup(argv[1]);
                 for (int k = 0; k < count - 1; k++) {
                     HEAD->args[k] = strdup(argv[k+2]);
                 }
+
                 HEAD->args[k+1] = NULL;
             }
             else if (count == 1) {
@@ -268,7 +270,7 @@ int main(int argc, char** argv) {
                 while(temp != NULL) {
                     printf("%s", temp->name);
                     int k = 0;
-                    while(temp->args[k] != NULL) {
+                    while (temp->args[k] != NULL) {
                         printf(" %s", temp->args[k]);
                         k++;    
                     }
@@ -334,7 +336,7 @@ int main(int argc, char** argv) {
                 // Found an alias for the command, re-populate argv
                 int i = 0;
                 int j = 0;
-                while ( t->args[j] != NULL) {
+                while (t->args[j] != NULL) {
                     argv[i++] = t->args[j++];
                 }
                 argv[i] = NULL;
@@ -393,6 +395,15 @@ int main(int argc, char** argv) {
         before_redir = NULL;
         redirect_file = NULL;
         after_redir = NULL;
+    }
+
+    // Exiting shell, free alias list
+
+    struct node *t  = HEAD;
+    while (t != NULL) {
+        struct node* p = t->next;
+        free(t);
+        t = p;
     }
 
     return 0;
