@@ -64,6 +64,11 @@ sys_sleep(void)
 
   if(argint(0, &n) < 0)
     return -1;
+  
+  // Setting the number of ticks to be slept
+  myproc()->ticks_to_sleep = n;
+  myproc()->ticks_slept = 0;
+
   acquire(&tickslock);
   ticks0 = ticks;
   while(ticks - ticks0 < n){
@@ -74,6 +79,11 @@ sys_sleep(void)
     sleep(&ticks, &tickslock);
   }
   release(&tickslock);
+
+  // cleanup
+  myproc()->ticks_to_sleep = 0;
+  myproc()->ticks_slept = 0;
+
   return 0;
 }
 

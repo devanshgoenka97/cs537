@@ -7,6 +7,15 @@
 #include "proc.h"
 #include "spinlock.h"
 
+#define RAND_MAX 0x7fffffff
+
+uint rseed = 0;
+
+// https://rosettacode.org/wiki/Linear_congruential_generator
+uint rand() {
+    return rseed = (rseed * 1103515245 + 12345) & RAND_MAX;
+}
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -88,6 +97,7 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->tickets = 1; // each new process starts with 1 ticket
 
   release(&ptable.lock);
 
@@ -198,6 +208,7 @@ fork(void)
   }
   np->sz = curproc->sz;
   np->parent = curproc;
+  np->tickets = curproc->tickets; // each child proc has same tickets as the par proc
   *np->tf = *curproc->tf;
 
   // Clear %eax so that fork returns 0 in the child.
@@ -311,6 +322,72 @@ wait(void)
   }
 }
 
+int
+get_total_tickets(void)
+{
+  struct proc *p;
+  int total = 0;
+
+  // Count total tickets for all RUNNABLE processes 
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
+    if(p->state==RUNNABLE){
+      total += p->tickets;
+    }
+  }
+
+  return total;          
+}
+
+struct proc*
+hold_lottery(int total_tickets) {
+    if (total_tickets <= 0) {
+        cprintf("this function should only be called when at least 1 process is RUNNABLE");
+        return 0;
+    }
+
+    // This number is between 0->4 billion
+    uint random_number = rand();
+
+    // Ensure that it is less than total number of tickets.
+    uint winner_ticket_number = random_number % total_tickets;
+
+    uint current_count = 0;
+
+    struct proc* p;
+    struct proc* winner = 0;
+
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
+
+      // Hold lottery for all RUNNABLE processes
+      if ((p->tickets + current_count) < winner_ticket_number){
+        current_count += p->tickets;
+        continue;
+      }
+      
+      winner = p;
+      break;
+    }
+
+    // Reduce the boosted rounds for processes that participated
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
+      
+      if(p->boosted_rounds > 1) {
+        p->boosted_rounds--;
+      }
+      else if(p->boosted_rounds == 1){
+        p->boosted_rounds = 0;
+        p->tickets -= p->tickets;
+      }
+    }
+
+    return winner;
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -322,7 +399,6 @@ wait(void)
 void
 scheduler(void)
 {
-  struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
   
@@ -332,24 +408,36 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+    // Get tools to hold lottery
+    int total_tickets = get_total_tickets();
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+    struct proc *p;
+    
+    if (total_tickets > 0) {
+      p = hold_lottery(total_tickets);
     }
+    else {
+      // No RUNNABLE processes
+      release(&ptable.lock);
+      continue;
+    }
+
+    // Switch to lottery winner.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+
+    swtch(&(c->scheduler), p->context);
+    switchkvm();
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+
     release(&ptable.lock);
 
   }
@@ -374,6 +462,7 @@ sched(void)
     panic("sched locks");
   if(p->state == RUNNING)
     panic("sched running");
+
   if(readeflags()&FL_IF)
     panic("sched interruptible");
   intena = mycpu()->intena;
@@ -459,9 +548,24 @@ wakeup1(void *chan)
 {
   struct proc *p;
 
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
-      p->state = RUNNABLE;
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == SLEEPING && p->chan == chan){
+
+      if(chan == &ticks){
+        p->ticks_slept++;
+
+        if(p->ticks_slept >= p->ticks_to_sleep) {
+          // since the process slept for n scheduling ticks
+          // its tickets will be doubled for n rounds
+          p->tickets = 2 * p->tickets;
+          p->boosted_rounds += p->ticks_to_sleep;
+          p->state = RUNNABLE;
+        }
+      }
+      else
+        p->state = RUNNABLE;
+    }
+  }
 }
 
 // Wake up all processes sleeping on chan.
