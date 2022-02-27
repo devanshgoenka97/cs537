@@ -501,6 +501,38 @@ forkret(void)
   // Return to "caller", actually trapret (see allocproc).
 }
 
+void
+setseed(uint seed)
+{
+  rseed = seed;
+  return;
+}
+
+int
+settickets(int pid, int tickets)
+{
+  struct proc *p;
+  int found = 0;
+
+  // check if pid is valid or not
+  acquire(&ptable.lock);
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+      found = 1;
+      p->tickets = tickets;
+      break;
+    }
+  }
+
+  release(&ptable.lock);
+
+  if (!found)
+    return -1;
+
+  return 0;
+}
+
 // Atomically release lock and sleep on chan.
 // Reacquires lock when awakened.
 void
@@ -554,10 +586,13 @@ wakeup1(void *chan)
       if(chan == &ticks){
         p->ticks_slept++;
 
+        // since the process slept for n scheduling ticks
+        // its tickets will be doubled for n rounds
         if(p->ticks_slept >= p->ticks_to_sleep) {
-          // since the process slept for n scheduling ticks
-          // its tickets will be doubled for n rounds
-          p->tickets = 2 * p->tickets;
+          // if already boosted, do not double boost
+          if (p->boosted_rounds == 0)
+            p->tickets += p->tickets;
+
           p->boosted_rounds += p->ticks_to_sleep;
           p->state = RUNNABLE;
         }

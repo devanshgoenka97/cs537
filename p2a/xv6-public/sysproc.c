@@ -57,6 +57,36 @@ sys_sbrk(void)
 }
 
 int
+sys_settickets(void)
+{
+  int pid;
+  int tickets;
+
+  if(argint(0, &pid) < 0 || argint(1, &tickets) <= 0)
+    return -1;
+
+  return settickets(pid, tickets);
+}
+
+int
+sys_srand(void)
+{
+  uint* seed;
+
+  argptr(0, (void *)&seed, sizeof(uint *));
+
+  setseed(*seed);
+
+  return 0;
+}
+
+int
+sys_getpinfo(void)
+{
+  return 0;
+}
+
+int
 sys_sleep(void)
 {
   int n;
