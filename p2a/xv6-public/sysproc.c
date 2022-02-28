@@ -63,7 +63,7 @@ sys_settickets(void)
   int pid;
   int tickets;
 
-  if(argint(0, &pid) < 0 || argint(1, &tickets) <= 0)
+  if(argint(0, &pid) < 0 || argint(1, &tickets) < 0 || tickets <= 0)
     return -1;
 
   return settickets(pid, tickets);

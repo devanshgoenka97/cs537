@@ -110,7 +110,7 @@ int             fork(void);
 int             growproc(int);
 int             kill(int);
 int             settickets(int, int);
-int             getpinfo(struct pstat*)
+int             getpinfo(struct pstat*);
 struct cpu*     mycpu(void);
 struct proc*    myproc();
 void            pinit(void);

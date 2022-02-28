@@ -515,7 +515,19 @@ int
 getpinfo(struct pstat* stat)
 {
   struct proc* p;
+  int i = 0;
+
   acquire(&ptable.lock);
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    stat->inuse[i] = p->state == UNUSED ? 0 : 1; 
+    stat->pid[i] = p->pid;
+    stat->tickets[i] = p->tickets;
+    stat->boostsleft[i] = p->boosted_rounds;
+    stat->runticks[i] = 0; 
+    i++;
+  }
+
   release(&ptable.lock);
   return 0;
 }
@@ -595,6 +607,7 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->state == SLEEPING && p->chan == chan){
 
+      // if sleeping on timer int, only wake when necessary
       if(chan == &ticks){
         p->ticks_slept++;
 
