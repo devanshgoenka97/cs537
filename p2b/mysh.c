@@ -218,6 +218,8 @@ int main(int argc, char** argv) {
                 if (HEAD == NULL) {
                     HEAD = (struct node *) malloc(sizeof(struct node));
                     HEAD->next = NULL;
+                    HEAD->name = NULL;
+                    for (int i = 0; i < 100; i++) { HEAD->args[i] = NULL; } 
                 }
                 else {
                     struct node* temp = HEAD;
@@ -239,6 +241,8 @@ int main(int argc, char** argv) {
                     }
                     struct node* new_node = (struct node *) malloc(sizeof(struct node));
                     new_node->next = HEAD;
+                    new_node->name = NULL;
+                    for (int i = 0; i < 100; i++) { new_node->args[i] = NULL; }
                     HEAD = new_node;
                 }
 
