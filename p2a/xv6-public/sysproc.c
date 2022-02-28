@@ -3,6 +3,7 @@
 #include "defs.h"
 #include "date.h"
 #include "param.h"
+#include "pstat.h"
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
@@ -83,7 +84,11 @@ sys_srand(void)
 int
 sys_getpinfo(void)
 {
-  return 0;
+  struct pstat* stat;
+  if(argptr(0, (void *)&stat, sizeof(struct pstat *)) < 0)
+    return -1;
+
+  return getpinfo(stat);
 }
 
 int

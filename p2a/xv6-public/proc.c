@@ -1,4 +1,5 @@
 #include "types.h"
+#include "pstat.h"
 #include "defs.h"
 #include "param.h"
 #include "memlayout.h"
@@ -98,6 +99,8 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
   p->tickets = 1; // each new process starts with 1 ticket
+  p->ticks_slept = 0;
+  p->ticks_to_sleep = 0;
 
   release(&ptable.lock);
 
@@ -208,7 +211,7 @@ fork(void)
   }
   np->sz = curproc->sz;
   np->parent = curproc;
-  np->tickets = curproc->tickets; // each child proc has same tickets as the par proc
+  np->tickets = curproc->boosted_rounds == 0 ? curproc->tickets : (curproc->tickets)/2; // each child proc has same tickets as the par proc
   *np->tf = *curproc->tf;
 
   // Clear %eax so that fork returns 0 in the child.
@@ -506,6 +509,15 @@ setseed(uint seed)
 {
   rseed = seed;
   return;
+}
+
+int
+getpinfo(struct pstat* stat)
+{
+  struct proc* p;
+  acquire(&ptable.lock);
+  release(&ptable.lock);
+  return 0;
 }
 
 int
