@@ -35,6 +35,7 @@
 
 // Function prorotypes for ease of use
 int countargs(char **args);
+int handleredirect(char *, char **, char **);
 void freemem(char *, char *, char *);
 
 int main(int argc, char** argv) {
@@ -96,58 +97,22 @@ int main(int argc, char** argv) {
             execute_command = 0;
         }
 
-        // Variables to handle redirect scenario
+        // check for redirect scenario
         int is_redirect = 0;
         char* redirect_file = NULL;
-        char* before_redir = NULL;
-        char* after_redir = NULL;
+        char* command_tokenizer = strdup(buffer);
 
-        int k = 0;
-        int pos = -1; 
-        int count = 0;
+        // call redirect handler
+        int redir = handleredirect(buffer, &redirect_file, &command_tokenizer);
 
-        while (buffer[k] != 0) {
-            if (buffer[k] == '>') {
-                count++;
-                pos = k;
-            }
-            k++;
+        // successful case of redirection
+        if (redir == 0) {
+            is_redirect = 1;
         }
-
-        // Handle case of more than 1 redirect
-        if (count > 1) {
-            // This should not happen, bad use of redirection
+        // bad use of redirection, print to stderr and not execute command
+        else if (redir == 1) {
             write(STDERR_FILENO, REDIRECTION_ERR, strlen(REDIRECTION_ERR));
             execute_command = 0;
-        }
-        else if (count == 1) {
-            is_redirect = 1;
-            before_redir = (char *) malloc((pos + 1) * sizeof(char));
-            after_redir = (char *) malloc((strlen(buffer) - pos - 1) * sizeof(char));
-
-            strncpy(before_redir, &buffer[0], pos);
-            strncpy(after_redir, &buffer[pos+1], strlen(buffer) - pos - 1);
-
-            before_redir[pos] = '\0';
-            after_redir[strlen(buffer) - pos - 1] = '\0';
-        }
-
-        char* command_tokenizer = buffer;
-
-        if (is_redirect) {
-            command_tokenizer = before_redir;
-
-            // Extracting the file name out
-            char* token = strtok(after_redir, DELIM);
-
-            // Either empty token or more than one token
-            if (token == NULL || strtok(NULL, DELIM) != NULL) {
-                write(STDERR_FILENO, REDIRECTION_ERR, strlen(REDIRECTION_ERR));
-                execute_command = 0;
-            }
-            else {
-                redirect_file = strdup(token);
-            }
         }
 
         // Using strtok() to tokenize the string with spaces, tabs
@@ -190,14 +155,14 @@ int main(int argc, char** argv) {
                 write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
             }
 
-            freemem(before_redir, after_redir, redirect_file);
+            freemem(redirect_file, command_tokenizer, NULL);
 
             continue;
         }
 
         // built-in command : "exit"
         if (strcmp(argv[0], EXIT) == 0) {
-            freemem(before_redir, after_redir, redirect_file);
+            freemem(redirect_file, command_tokenizer, NULL);
             break;
         }
         // built-in command : "alias"
@@ -221,7 +186,7 @@ int main(int argc, char** argv) {
                 write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
             }
 
-            freemem(before_redir, after_redir, redirect_file);
+            freemem(redirect_file, command_tokenizer, NULL);
             continue;
         }
         // built-in command : "unalias"
@@ -241,7 +206,7 @@ int main(int argc, char** argv) {
                 write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
             }
 
-            freemem(before_redir, after_redir, redirect_file);
+            freemem(redirect_file, command_tokenizer, NULL);
             continue;
         }
 
@@ -297,7 +262,7 @@ int main(int argc, char** argv) {
             write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
         }
 
-        freemem(before_redir, after_redir, redirect_file);
+        freemem(redirect_file, command_tokenizer, NULL);
     }
 
     // close file pointer
@@ -307,6 +272,72 @@ int main(int argc, char** argv) {
     freeall();
 
     return 0;
+}
+
+int handleredirect(char* buffer, char** redirect_file, char** command_tokenizer) {
+    // variables needed for redirection
+    char* before_redir = NULL;
+    char* after_redir = NULL;
+    int k = 0;
+    int pos = -1; 
+    int count = 0;
+    int is_redirect = 0;
+
+    // check if the redirect symbol appears in buffer
+    while (buffer[k] != 0) {
+        if (buffer[k] == '>') {
+            count++;
+            pos = k;
+        }
+        k++;
+    }
+
+    // Handle case of more than 1 redirect
+    if (count > 1) {
+        // This should not happen, bad use of redirection
+        return 1;
+    }
+    // valid case of redirect
+    else if (count == 1) {
+        is_redirect = 1;
+
+        // separate input into before and after redirect symbol
+        before_redir = (char *) malloc((pos + 1) * sizeof(char));
+        after_redir = (char *) malloc((strlen(buffer) - pos - 1) * sizeof(char));
+
+        // copy input to new memory malloc()'ed
+        strncpy(before_redir, &buffer[0], pos);
+        strncpy(after_redir, &buffer[pos+1], strlen(buffer) - pos - 1);
+
+        // place end of string characters
+        before_redir[pos] = '\0';
+        after_redir[strlen(buffer) - pos - 1] = '\0';
+    }
+
+    if (is_redirect) {
+        // free the populated command tokenizer
+        free(*command_tokenizer);
+
+        // only tokenize the commands before redir symbol;
+        *command_tokenizer = strdup(before_redir);
+
+        // Extracting the file name out
+        char* token = strtok(after_redir, DELIM);
+
+        // Either empty token or more than one token
+        if (token == NULL || strtok(NULL, DELIM) != NULL) {
+            return 1;
+        }
+        else {
+            *redirect_file = strdup(token);
+        }
+
+        // free the redir pointers, it is already duplicated
+        freemem(after_redir, before_redir, NULL);
+        return 0;
+    }
+
+    return -1;
 }
 
 void freemem(char *p1, char *p2, char *p3) {
