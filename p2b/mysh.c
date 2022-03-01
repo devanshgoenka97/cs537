@@ -8,6 +8,7 @@
 #include<string.h>
 #include<fcntl.h>
 
+#include "node.h"
 #include "linkedlist.h"
 
 // Buffer sizes
@@ -31,6 +32,9 @@
 #define EXIT                    "exit"
 #define DELIM                   " \t\r\n"
 #define REDIRECT                ">"
+
+int countargs(char **args);
+void freemem(char *, char *, char *);
 
 int main(int argc, char** argv) {
 
@@ -194,7 +198,7 @@ int main(int argc, char** argv) {
                 add(argv[1], &argv[2]);
             }
             else if (count == 1) {
-                print(argv[1]));
+                print(argv[1]);
             }
             else {
                 printall();
@@ -204,6 +208,7 @@ int main(int argc, char** argv) {
                 write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
             }
 
+            freemem(before_redir, after_redir, redirect_file);
             continue;
         }
         else if (strcmp(argv[0], UNALIAS) == 0) {
@@ -213,13 +218,14 @@ int main(int argc, char** argv) {
                 printf("unalias: Incorrect number of arguments.\n");
             }
             else {
-                delete(argv[1]);
+                del(argv[1]);
             }
 
             if (is_interactive) {
                 write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
             }
 
+            freemem(before_redir, after_redir, redirect_file);
             continue;
         }
 

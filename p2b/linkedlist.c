@@ -1,6 +1,7 @@
 // Copyright [2022] <Devansh Goenka>
 
 #include<stdlib.h>
+#include<string.h>
 #include<stdio.h>
 
 #include "linkedlist.h"
@@ -21,7 +22,7 @@ struct node* create(char* name, char** args) {
     for (int i = 0; i < 100; i++) { 
         new_node->args[i] = NULL;
     } 
-    
+
     int j = 0;
     while(args[j] != NULL) {
         new_node->args[j] = strdup(args[j]);
