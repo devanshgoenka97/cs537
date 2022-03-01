@@ -14,6 +14,7 @@ int del(char*);
 void printall();
 void print(char *);
 void printnode(struct node *);
+void freenode(struct node *);
 void freeall();
 
 #endif

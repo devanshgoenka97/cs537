@@ -33,21 +33,23 @@
 #define DELIM                   " \t\r\n"
 #define REDIRECT                ">"
 
+// Function prorotypes for ease of use
 int countargs(char **args);
 void freemem(char *, char *, char *);
 
 int main(int argc, char** argv) {
 
-    // Initialising the batch file pointer
+    // variables needed for the batch file pointer
     char* file_name = NULL;
     int is_interactive = 1;
 
+    // print incorrect number of args to mysh
     if (argc > 2) {
         write(STDERR_FILENO, ARG_ERR, strlen(ARG_ERR));
         exit(1);
     }
 
-    // if 2 arguments, it is a batch mode
+    // if 2 arguments, it is batch mode
     if (argc == 2) {
         is_interactive = 0;
         file_name = argv[1];
@@ -59,6 +61,8 @@ int main(int argc, char** argv) {
     // Read from the batch file
     if (!is_interactive) {
         fp = fopen(file_name, "r");
+
+        // unable to read batch file
         if (fp == NULL) {
             char buffer[BUFFER_SIZE];
             size_t length = snprintf(buffer, sizeof(buffer), BATCH_FILE_ERR, file_name);
@@ -76,6 +80,7 @@ int main(int argc, char** argv) {
 
     // Reading user input until Ctrl + D signal sent
     while (fgets(buffer, BUFFER_SIZE, fp) != NULL) {
+        // variable to decide if to execute or not later
         int execute_command = 1;
 
         // Print the command received in batch mode only
@@ -168,14 +173,17 @@ int main(int argc, char** argv) {
         // Place NULL at the end of the argument array
         argv[i] = NULL;
 
-        // If all spaces in shell input
-        if(i == 0) {
+        // if no arguments populated, no command given
+        if(argv[0] == NULL) {
             execute_command = 0;
+
+            // bad use of redirection, no command given
             if (is_redirect) {
                 write(STDERR_FILENO, REDIRECTION_ERR, strlen(REDIRECTION_ERR));
             }
         }
 
+        // deciding to not execute command
         if (!execute_command) {
             // Printing the prompt again
             if (is_interactive) {
@@ -187,19 +195,24 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        // built-in command : "exit"
         if (strcmp(argv[0], EXIT) == 0) {
             freemem(before_redir, after_redir, redirect_file);
             break;
         }
+        // built-in command : "alias"
         else if (strcmp(argv[0], ALIAS) == 0) {
             int count = countargs(argv);
 
+            // args >= 2, add node to alias list
             if (count >= 2) {
                 add(argv[1], &argv[2]);
             }
+            // find and print the matching node
             else if (count == 1) {
                 print(argv[1]);
             }
+            // print the entire list
             else {
                 printall();
             }
@@ -211,12 +224,15 @@ int main(int argc, char** argv) {
             freemem(before_redir, after_redir, redirect_file);
             continue;
         }
+        // built-in command : "unalias"
         else if (strcmp(argv[0], UNALIAS) == 0) {
             int count = countargs(argv);
 
+            // only 1 arg expected
             if (count > 1 || count == 0) {
                 printf("unalias: Incorrect number of arguments.\n");
             }
+            // remove node from alias list
             else {
                 del(argv[1]);
             }
