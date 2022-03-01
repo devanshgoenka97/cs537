@@ -34,7 +34,8 @@
 #define REDIRECT                ">"
 
 // Function prorotypes for ease of use
-int countargs(char **args);
+int countargs(char **);
+int tokenize(char *, char **);
 int handleredirect(char *, char **, char **);
 void freemem(char *, char *, char *);
 
@@ -115,31 +116,14 @@ int main(int argc, char** argv) {
             execute_command = 0;
         }
 
-        // Using strtok() to tokenize the string with spaces, tabs
-        char* token = strtok(command_tokenizer, DELIM);
-
         // Constructing argument array for the child command
         char *argv[100];
-        int i = 0;
 
-        while(token != NULL) {
-
-            // Handle extra spaces and tabs
-            if (strcmp(token, DELIM) == 0) {
-                token = strtok(NULL, DELIM);
-                continue;
-            }
-
-            // Construct argument array
-            argv[i++] = token;
-            token = strtok(NULL, DELIM);
-        }
-
-        // Place NULL at the end of the argument array
-        argv[i] = NULL;
+        // tokenize and get the len of args array
+        int len = tokenize(command_tokenizer, argv);
 
         // if no arguments populated, no command given
-        if(argv[0] == NULL) {
+        if(len == 0) {
             execute_command = 0;
 
             // bad use of redirection, no command given
@@ -212,8 +196,9 @@ int main(int argc, char** argv) {
 
         // check alias list to check if present
         struct node* t = find(argv[0]);
+
+        // found an alias, re-populate argv
         if (t != NULL) {
-            // Found an alias for the command, re-populate argv
             int i = 0;
             int j = 0;
             while (t->args[j] != NULL) {
@@ -274,6 +259,35 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+// tokenizes the command and populates the "args" array
+int tokenize(char *command_tokenizer, char **args) {
+    // Using strtok() to tokenize the string with spaces, tabs
+    char* token = strtok(command_tokenizer, DELIM);
+
+    int i = 0;
+
+    // while the tokens exist
+    while(token != NULL) {
+
+        // Handle extra spaces and tabs
+        if (strcmp(token, DELIM) == 0) {
+            token = strtok(NULL, DELIM);
+            continue;
+        }
+
+        // Construct argument array
+        args[i++] = token;
+        token = strtok(NULL, DELIM);
+    }
+
+    // Place NULL at the end of the argument array
+    args[i] = NULL;
+
+    // Return the length of tokenized args
+    return i;
+}
+
+// handles the redirect scenario and populates "redirect_file" if true
 int handleredirect(char* buffer, char** redirect_file, char** command_tokenizer) {
     // variables needed for redirection
     char* before_redir = NULL;
@@ -337,9 +351,11 @@ int handleredirect(char* buffer, char** redirect_file, char** command_tokenizer)
         return 0;
     }
 
+    // not a redirect scenario
     return -1;
 }
 
+// deallocates pointers
 void freemem(char *p1, char *p2, char *p3) {
     if (p1 != NULL)
         free(p1);
@@ -353,6 +369,7 @@ void freemem(char *p1, char *p2, char *p3) {
     p3 = NULL;
 }
 
+// utility to count the number of arguments
 int countargs(char **args) {
     int count = 0;
     int j = 1;
