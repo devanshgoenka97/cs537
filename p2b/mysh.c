@@ -8,6 +8,8 @@
 #include<string.h>
 #include<fcntl.h>
 
+#include "linkedlist.h"
+
 // Buffer sizes
 #define BUFFER_SIZE             512
 
@@ -15,23 +17,20 @@
 #define DEBUG                   1
 #define dprintf(...)            if (DEBUG) { printf(__VA_ARGS__); }       
 
-// Bunch of constant strings and error messages
+// Bunch of error messages
 #define ARG_ERR                 "Usage: mysh [batch-file]\n"
 #define BATCH_FILE_ERR          "Error: Cannot open file %s.\n"
 #define COMMAND_NOT_FOUND_ERR   "%s: Command not found.\n"
 #define REDIRECTION_ERR         "Redirection misformatted.\n"
 #define REDIRECT_FILE_ERR       "Cannot write to file %s.\n"
 
+// Bunch of Constant strings
+#define ALIAS                   "alias"
+#define UNALIAS                 "unalias"
 #define PROMPT                  "mysh> "
 #define EXIT                    "exit"
 #define DELIM                   " \t\r\n"
 #define REDIRECT                ">"
-
-struct node {
-    struct node* next;
-    char* name;
-    char* args[100];
-};
 
 int main(int argc, char** argv) {
 
@@ -44,6 +43,7 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
+    // if 2 arguments, it is a batch mode
     if (argc == 2) {
         is_interactive = 0;
         file_name = argv[1];
@@ -52,8 +52,8 @@ int main(int argc, char** argv) {
     // Defaulting to the stdin FILE* for input
     FILE *fp = stdin;
 
+    // Read from the batch file
     if (!is_interactive) {
-        // Read from the batch file
         fp = fopen(file_name, "r");
         if (fp == NULL) {
             char buffer[BUFFER_SIZE];
@@ -64,8 +64,8 @@ int main(int argc, char** argv) {
     }
 
     char buffer[BUFFER_SIZE];
-    struct node* HEAD = NULL;
 
+    // Print prompt
     if (is_interactive) {
         write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
     }
@@ -74,6 +74,7 @@ int main(int argc, char** argv) {
     while (fgets(buffer, BUFFER_SIZE, fp) != NULL) {
         int execute_command = 1;
 
+        // Print the command received in batch mode only
         if (!is_interactive) {
             write(STDOUT_FILENO, buffer, strlen(buffer));
         }
@@ -126,8 +127,8 @@ int main(int argc, char** argv) {
 
         if (is_redirect) {
             command_tokenizer = before_redir;
-            // Extracting the file name out
 
+            // Extracting the file name out
             char* token = strtok(after_redir, DELIM);
 
             // Either empty token or more than one token
@@ -160,6 +161,9 @@ int main(int argc, char** argv) {
             token = strtok(NULL, DELIM);
         }
 
+        // Place NULL at the end of the argument array
+        argv[i] = NULL;
+
         // If all spaces in shell input
         if(i == 0) {
             execute_command = 0;
@@ -173,117 +177,28 @@ int main(int argc, char** argv) {
             if (is_interactive) {
                 write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
             }
-            
-            if (before_redir != NULL)
-                free(before_redir);
-            if (after_redir != NULL)
-                free(after_redir);
-            if (redirect_file != NULL)
-                free(redirect_file);
 
-            redirect_file = NULL;
-            before_redir = NULL;
-            after_redir = NULL;
+            freemem(before_redir, after_redir, redirect_file);
 
             continue;
         }
 
-        // Place NULL at the end of the argument array
-        argv[i] = NULL;
-
         if (strcmp(argv[0], EXIT) == 0) {
-            if (before_redir != NULL)
-                free(before_redir);
-            if (after_redir != NULL)
-                free(after_redir);
-            if (redirect_file != NULL)
-                free(redirect_file);
-
-            redirect_file = NULL;
-            before_redir = NULL;
-            after_redir = NULL;
-
+            freemem(before_redir, after_redir, redirect_file);
             break;
         }
-        else if (strcmp(argv[0], "alias") == 0) {
-            int count = 0;
-            int j = 1;
-
-            while (argv[j] != NULL) {
-                count++;
-                j++;
-            }
+        else if (strcmp(argv[0], ALIAS) == 0) {
+            int count = countargs(argv);
 
             if (count >= 2) {
-                if (HEAD == NULL) {
-                    HEAD = (struct node *) malloc(sizeof(struct node));
-                    HEAD->next = NULL;
-                    HEAD->name = NULL;
-                    for (int i = 0; i < 100; i++) { HEAD->args[i] = NULL; } 
-                }
-                else {
-                    struct node* temp = HEAD;
-                    struct node* prev = NULL;
-                    while(temp != NULL) {
-                        if (strcmp(argv[1], temp->name) == 0) {
-                            if (prev == NULL) {
-                                free(HEAD);
-                                HEAD  = NULL;
-                                break;
-                            }
-                            struct node* f = temp;
-                            prev->next = temp->next;
-                            free(f);
-                            break;
-                        }
-                        prev = temp;
-                        temp = temp->next;
-                    }
-                    struct node* new_node = (struct node *) malloc(sizeof(struct node));
-                    new_node->next = HEAD;
-                    new_node->name = NULL;
-                    for (int i = 0; i < 100; i++) { new_node->args[i] = NULL; }
-                    HEAD = new_node;
-                }
-
-                HEAD->name = strdup(argv[1]);
-                for (int k = 0; k < count - 1; k++) {
-                    HEAD->args[k] = strdup(argv[k+2]);
-                }
-
-                HEAD->args[k+1] = NULL;
+                add(argv[1], &argv[2]);
             }
             else if (count == 1) {
-                struct node* temp = HEAD;
-                while(temp != NULL) {
-                    if (strcmp(argv[1], temp->name) == 0) {
-                        printf("%s", temp->name);
-                        int k = 0;
-                        while(temp->args[k] != NULL) {
-                            printf(" %s", temp->args[k]);
-                            k++;    
-                        }
-                        printf("\n");
-                        break;
-                    }
-                    temp = temp->next;
-                }
+                print(argv[1]));
             }
             else {
-                struct node* temp = HEAD;
-                while(temp != NULL) {
-                    printf("%s", temp->name);
-                    int k = 0;
-                    while (temp->args[k] != NULL) {
-                        printf(" %s", temp->args[k]);
-                        k++;    
-                    }
-                    printf("\n");
-                    temp = temp->next;
-                }
+                printall();
             }
-
-            fflush(stdout);
 
             if (is_interactive) {
                 write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
@@ -291,39 +206,14 @@ int main(int argc, char** argv) {
 
             continue;
         }
-        else if (strcmp(argv[0], "unalias") == 0) {
-            int count = 0;
-            int j = 1;
-
-            while (argv[j] != NULL) {
-                count++;
-                j++;
-            }
+        else if (strcmp(argv[0], UNALIAS) == 0) {
+            int count = countargs(argv);
 
             if (count > 1 || count == 0) {
                 printf("unalias: Incorrect number of arguments.\n");
             }
             else {
-                struct node* temp = HEAD;
-                struct node* prev = NULL;
-                while(temp != NULL) {
-                    if (strcmp(argv[1], temp->name) == 0) {
-                        if (prev == NULL)
-                        {
-                            HEAD = HEAD->next;
-                            free(temp);
-                            temp = NULL;
-                        }
-                        else {
-                            prev->next = temp->next;
-                            free(temp);
-                            temp = NULL;
-                        }
-                        break;
-                    }
-                    prev = temp;
-                    temp = temp->next;
-                }
+                delete(argv[1]);
             }
 
             if (is_interactive) {
@@ -333,21 +223,16 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        // Traverse aliased linked list to check if any alias is present
-        struct node* t = HEAD;
-        while (t != NULL) {
-            if (strcmp(t->name, argv[0]) == 0) {
-                // Found an alias for the command, re-populate argv
-                int i = 0;
-                int j = 0;
-                while (t->args[j] != NULL) {
-                    argv[i++] = t->args[j++];
-                }
-                argv[i] = NULL;
-
-                break;
+        // check alias list to check if present
+        struct node* t = find(argv[0]);
+        if (t != NULL) {
+            // Found an alias for the command, re-populate argv
+            int i = 0;
+            int j = 0;
+            while (t->args[j] != NULL) {
+                argv[i++] = t->args[j++];
             }
-            t = t->next;
+            argv[i] = NULL;
         }
 
         int pid = fork();
@@ -390,25 +275,39 @@ int main(int argc, char** argv) {
             write(STDOUT_FILENO, PROMPT, strlen(PROMPT));
         }
 
-        if (before_redir != NULL)
-            free(before_redir);
-        if (after_redir != NULL)
-            free(after_redir);
-        if (redirect_file != NULL)
-            free(redirect_file);
-        before_redir = NULL;
-        redirect_file = NULL;
-        after_redir = NULL;
+        freemem(before_redir, after_redir, redirect_file);
     }
 
-    // Exiting shell, free alias list
+    // close file pointer
+    fclose(fp);
 
-    struct node *t  = HEAD;
-    while (t != NULL) {
-        struct node* p = t->next;
-        free(t);
-        t = p;
-    }
+    // free alias list
+    freeall();
 
     return 0;
+}
+
+void freemem(char *p1, char *p2, char *p3) {
+    if (p1 != NULL)
+        free(p1);
+    if (p2 != NULL)
+        free(p2);
+    if (p3 != NULL)
+        free(p3);
+
+    p1 = NULL;
+    p2 = NULL;
+    p3 = NULL;
+}
+
+int countargs(char **args) {
+    int count = 0;
+    int j = 1;
+
+    while (args[j] != NULL) {
+        count++;
+        j++;
+    }
+
+    return count;
 }

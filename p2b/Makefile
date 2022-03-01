@@ -1,6 +1,6 @@
 CC=gcc
 
-mysh: mysh.c
+mysh: mysh.c linkedlist.h linkedlist.c node.h
 	$(CC) -o mysh -Wall -Werror -g mysh.c
 
 clean:
