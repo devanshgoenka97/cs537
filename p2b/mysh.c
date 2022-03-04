@@ -24,6 +24,8 @@
 #define COMMAND_NOT_FOUND_ERR   "%s: Command not found.\n"
 #define REDIRECTION_ERR         "Redirection misformatted.\n"
 #define REDIRECT_FILE_ERR       "Cannot write to file %s.\n"
+#define ALIAS_FORBIDDEN         "alias: Too dangerous to alias that.\n"
+#define UNLALIAS_ARGS           "unalias: Incorrect number of arguments.\n"
 
 // Bunch of Constant strings
 #define ALIAS                   "alias"
@@ -37,6 +39,7 @@
 int countargs(char **);
 int tokenize(char *, char **);
 int handleredirect(char *, char **, char **);
+void execute(int, char *, char **);
 void freemem(char *, char *, char *);
 
 int main(int argc, char** argv) {
@@ -155,7 +158,17 @@ int main(int argc, char** argv) {
 
             // args >= 2, add node to alias list
             if (count >= 2) {
-                add(argv[1], &argv[2]);
+                // check for forbidden aliases
+
+                if (strcmp(argv[1], ALIAS) == 0 || 
+                    strcmp(argv[1], UNALIAS) == 0 || 
+                    strcmp(argv[1], EXIT) == 0 )  {
+
+                    write(STDERR_FILENO, ALIAS_FORBIDDEN, strlen(ALIAS_FORBIDDEN));
+                }
+                else {
+                    add(argv[1], &argv[2]);
+                }
             }
             // find and print the matching node
             else if (count == 1) {
@@ -179,7 +192,7 @@ int main(int argc, char** argv) {
 
             // only 1 arg expected
             if (count > 1 || count == 0) {
-                printf("unalias: Incorrect number of arguments.\n");
+                write(STDERR_FILENO, UNLALIAS_ARGS, strlen(UNLALIAS_ARGS));
             }
             // remove node from alias list
             else {
@@ -211,31 +224,8 @@ int main(int argc, char** argv) {
         int status;
 
         if (pid == 0) {
-            // Inside child
-            if (is_redirect) {
-                close(STDOUT_FILENO);
-                int opfile = open(redirect_file, O_TRUNC | O_RDWR | O_CREAT, 0666);
-            
-                if (opfile < 0) {
-                    // Printing the correct error message to STDERR
-                    char buffer[BUFFER_SIZE];
-                    size_t length = snprintf(buffer, sizeof(buffer), REDIRECT_FILE_ERR, redirect_file);
-                    write(STDERR_FILENO, buffer, length);
-                    fclose(stdin);
-                    exit(1);
-                }
-            }
-
-            int rc_child = execv(argv[0], argv);
-
-            if (rc_child != 0) {
-                // Printing the correct error message to STDERR
-                char buffer[BUFFER_SIZE];
-                size_t length = snprintf(buffer, sizeof(buffer), COMMAND_NOT_FOUND_ERR, argv[0]);
-                write(STDERR_FILENO, buffer, length);
-                fclose(stdin);
-                exit(1);
-            }
+            // Inside child, call execute
+            execute(is_redirect, redirect_file, argv);
         }
         else {
             // Inside parent
@@ -257,6 +247,42 @@ int main(int argc, char** argv) {
     freeall();
 
     return 0;
+}
+
+// executes the given arguments using execv()
+void execute(int is_redirect, char* redirect_file, char** argv) {
+    // if redirection requested, handle fds
+    if (is_redirect) {
+        // close the stdout fd
+        close(STDOUT_FILENO);
+
+        // open the requested file
+        int opfile = open(redirect_file, O_TRUNC | O_RDWR | O_CREAT, 0666);
+    
+        if (opfile < 0) {
+            // Printing the correct error message to STDERR
+            char buffer[BUFFER_SIZE];
+            size_t length = snprintf(buffer, sizeof(buffer), REDIRECT_FILE_ERR, redirect_file);
+            write(STDERR_FILENO, buffer, length);
+            fclose(stdin);
+            exit(1);
+        }
+    }
+
+    // execute the command
+    int rc = execv(argv[0], argv);
+
+    // execv failed
+    if (rc != 0) {
+        // Printing the correct error message to STDERR
+        char buffer[BUFFER_SIZE];
+        size_t length = snprintf(buffer, sizeof(buffer), COMMAND_NOT_FOUND_ERR, argv[0]);
+        write(STDERR_FILENO, buffer, length);
+
+        // since stdin is already open for parent
+        fclose(stdin);
+        exit(1);
+    }
 }
 
 // tokenizes the command and populates the "args" array
