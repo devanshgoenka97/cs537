@@ -99,6 +99,7 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
   p->tickets = 1; // each new process starts with 1 ticket
+  p->run_ticks = 0; // not run till now
   p->ticks_slept = 0;
   p->ticks_to_sleep = 0;
 
@@ -211,7 +212,7 @@ fork(void)
   }
   np->sz = curproc->sz;
   np->parent = curproc;
-  np->tickets = curproc->boosted_rounds == 0 ? curproc->tickets : (curproc->tickets)/2; // each child proc has same tickets as the par proc
+  np->tickets = curproc->tickets; // each child proc has same tickets as the par proc
   *np->tf = *curproc->tf;
 
   // Clear %eax so that fork returns 0 in the child.
@@ -335,7 +336,7 @@ get_total_tickets(void)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
     if(p->state==RUNNABLE){
-      total += p->tickets;
+      total += p->boosted_rounds > 0 ? (2 * p->tickets) : p->tickets;
     }
   }
 
@@ -360,13 +361,15 @@ hold_lottery(int total_tickets) {
     struct proc* p;
     struct proc* winner = 0;
 
+    // Hold lottery for all RUNNABLE processes
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
 
-      // Hold lottery for all RUNNABLE processes
-      if ((p->tickets + current_count) < winner_ticket_number){
-        current_count += p->tickets;
+      // If boosted, then double the tickets the process has
+      int tickets_curr = p->boosted_rounds > 0 ? (2 * p->tickets) : p->tickets;
+      if ((tickets_curr + current_count) < winner_ticket_number){
+        current_count += tickets_curr;
         continue;
       }
       
@@ -379,12 +382,8 @@ hold_lottery(int total_tickets) {
       if(p->state != RUNNABLE)
         continue;
       
-      if(p->boosted_rounds > 1) {
+      if(p->boosted_rounds >= 1) {
         p->boosted_rounds--;
-      }
-      else if(p->boosted_rounds == 1){
-        p->boosted_rounds = 0;
-        p->tickets -= p->tickets;
       }
     }
 
@@ -429,7 +428,6 @@ scheduler(void)
     // Switch to lottery winner.  It is the process's job
     // to release ptable.lock and then reacquire it
     // before jumping back to us.
-
     c->proc = p;
     switchuvm(p);
     p->state = RUNNING;
@@ -458,6 +456,8 @@ sched(void)
 {
   int intena;
   struct proc *p = myproc();
+  // proc calling sched() -> called yield(), sleep() or exit()
+  myproc()->run_ticks++;
 
   if(!holding(&ptable.lock))
     panic("sched ptable.lock");
@@ -524,7 +524,7 @@ getpinfo(struct pstat* stat)
     stat->pid[i] = p->pid;
     stat->tickets[i] = p->tickets;
     stat->boostsleft[i] = p->boosted_rounds;
-    stat->runticks[i] = 0; 
+    stat->runticks[i] = p->run_ticks; 
     i++;
   }
 
@@ -614,10 +614,6 @@ wakeup1(void *chan)
         // since the process slept for n scheduling ticks
         // its tickets will be doubled for n rounds
         if(p->ticks_slept >= p->ticks_to_sleep) {
-          // if already boosted, do not double boost
-          if (p->boosted_rounds == 0)
-            p->tickets += p->tickets;
-
           p->boosted_rounds += p->ticks_to_sleep;
           p->state = RUNNABLE;
         }
