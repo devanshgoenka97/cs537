@@ -102,6 +102,7 @@ found:
   p->run_ticks = 0; // not run till now
   p->ticks_slept = 0;
   p->ticks_to_sleep = 0;
+  p->sleeping_at = 0;
 
   release(&ptable.lock);
 
@@ -584,6 +585,11 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
+  // record ticks when sleeping
+  acquire(&tickslock);
+  p->sleeping_at = ticks;
+  release(&tickslock);
+
   sched();
 
   // Tidy up.
@@ -606,20 +612,26 @@ wakeup1(void *chan)
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->state == SLEEPING && p->chan == chan){
-
       // if sleeping on timer int, only wake when necessary
       if(chan == &ticks){
         p->ticks_slept++;
-
         // since the process slept for n scheduling ticks
         // its tickets will be doubled for n rounds
         if(p->ticks_slept >= p->ticks_to_sleep) {
-          p->boosted_rounds += p->ticks_to_sleep;
+          p->boosted_rounds += p->ticks_slept;
           p->state = RUNNABLE;
         }
       }
-      else
+      else {
+        uint ticks0;
+        acquire(&tickslock);
+        ticks0 = ticks;
+        release(&tickslock);
+        
+        p->boosted_rounds += ticks0 - p->sleeping_at;
+        p->sleeping_at = 0;
         p->state = RUNNABLE;
+      }
     }
   }
 }

@@ -182,6 +182,8 @@ UPROGS=\
 	_wc\
 	_zombie\
 	_userprog\
+	_loop\
+	_schedtest\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
@@ -189,10 +191,11 @@ fs.img: mkfs README $(UPROGS)
 -include *.d
 
 clean: 
-	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
+	rm -rf *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
 	*.o *.d *.asm *.sym vectors.S bootblock entryother \
 	initcode initcode.out kernel xv6.img fs.img kernelmemfs \
 	xv6memfs.img mkfs .gdbinit \
+	Makefile.test test_*.c tests-out/ \
 	$(UPROGS)
 
 # make a printout
