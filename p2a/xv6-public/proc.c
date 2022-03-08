@@ -101,8 +101,8 @@ found:
   p->tickets = 1; // each new process starts with 1 ticket
   p->run_ticks = 0; // not run till now
   p->ticks_slept = 0;
+  p->boosted_rounds = 0;
   p->ticks_to_sleep = 0;
-  p->sleeping_at = 0;
 
   release(&ptable.lock);
 
@@ -336,7 +336,7 @@ get_total_tickets(void)
   // Count total tickets for all RUNNABLE processes 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if(p->state==RUNNABLE){
+    if(p->state == RUNNABLE){
       total += p->boosted_rounds > 0 ? (2 * p->tickets) : p->tickets;
     }
   }
@@ -380,6 +380,12 @@ hold_lottery(int total_tickets) {
 
     // Reduce the boosted rounds for processes that participated
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      // Boost the rounds for sleeping processes by one
+      if (p->state == SLEEPING && p->chan != &ticks){
+        p->boosted_rounds += 1;
+        continue;
+      }
+
       if(p->state != RUNNABLE)
         continue;
       
@@ -406,6 +412,10 @@ scheduler(void)
   c->proc = 0;
   
   for(;;){
+
+    // Enable interrupts on this processor
+    sti();
+
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
 
@@ -420,17 +430,14 @@ scheduler(void)
     else {
       // No RUNNABLE processes
       // Enable interrupts on this processor.
-      sti();
       release(&ptable.lock);
       continue;
     }
 
-    // Enable interrupts on this processor.
-    sti();
-
     // Switch to lottery winner.  It is the process's job
     // to release ptable.lock and then reacquire it
     // before jumping back to us.
+    p->run_ticks += 1;
     c->proc = p;
     switchuvm(p);
     p->state = RUNNING;
@@ -459,10 +466,6 @@ sched(void)
 {
   int intena;
   struct proc *p = myproc();
-
-  // proc calling sched() -> yield(), sleep() or exit()
-  // increment run_ticks
-  p->run_ticks++;
 
   if(!holding(&ptable.lock))
     panic("sched ptable.lock");
@@ -613,11 +616,6 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    // process is sleeping, increment its boosted rounds
-    if(p->state == SLEEPING){
-      p->boosted_rounds += 1;
-    }
-
     // wake up the process sleeping on chan
     if(p->state == SLEEPING && p->chan == chan){
       // if sleeping on timer int, only wake when necessary
@@ -627,6 +625,7 @@ wakeup1(void *chan)
         // its tickets will be doubled for n rounds
         if(p->ticks_slept >= p->ticks_to_sleep) {
           p->state = RUNNABLE;
+          p->boosted_rounds += p->ticks_slept;
         }
       }
       else {

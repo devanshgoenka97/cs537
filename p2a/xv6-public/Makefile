@@ -184,6 +184,7 @@ UPROGS=\
 	_userprog\
 	_loop\
 	_schedtest\
+	_test_11\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
