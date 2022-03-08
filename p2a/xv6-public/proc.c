@@ -354,8 +354,8 @@ hold_lottery(int total_tickets) {
     // This number is between 0->4 billion
     uint random_number = rand();
 
-    // Ensure that it is less than total number of tickets.
-    uint winner_ticket_number = random_number % total_tickets;
+    // Ensure that it is <= total number of tickets.
+    uint winner_ticket_number = 1 + (random_number % total_tickets);
 
     uint current_count = 0;
 
@@ -406,9 +406,6 @@ scheduler(void)
   c->proc = 0;
   
   for(;;){
-    // Enable interrupts on this processor.
-    sti();
-
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
 
@@ -422,9 +419,14 @@ scheduler(void)
     }
     else {
       // No RUNNABLE processes
+      // Enable interrupts on this processor.
+      sti();
       release(&ptable.lock);
       continue;
     }
+
+    // Enable interrupts on this processor.
+    sti();
 
     // Switch to lottery winner.  It is the process's job
     // to release ptable.lock and then reacquire it
@@ -457,8 +459,10 @@ sched(void)
 {
   int intena;
   struct proc *p = myproc();
-  // proc calling sched() -> called yield(), sleep() or exit()
-  myproc()->run_ticks++;
+
+  // proc calling sched() -> yield(), sleep() or exit()
+  // increment run_ticks
+  p->run_ticks++;
 
   if(!holding(&ptable.lock))
     panic("sched ptable.lock");
@@ -518,8 +522,10 @@ getpinfo(struct pstat* stat)
   struct proc* p;
   int i = 0;
 
+  // read from the global ptable
   acquire(&ptable.lock);
 
+  // populate the struct
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     stat->inuse[i] = p->state == UNUSED ? 0 : 1; 
     stat->pid[i] = p->pid;
@@ -529,6 +535,7 @@ getpinfo(struct pstat* stat)
     i++;
   }
 
+  // release the lock
   release(&ptable.lock);
   return 0;
 }
@@ -585,11 +592,6 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
-  // record ticks when sleeping
-  acquire(&tickslock);
-  p->sleeping_at = ticks;
-  release(&tickslock);
-
   sched();
 
   // Tidy up.
@@ -611,6 +613,12 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    // process is sleeping, increment its boosted rounds
+    if(p->state == SLEEPING){
+      p->boosted_rounds += 1;
+    }
+
+    // wake up the process sleeping on chan
     if(p->state == SLEEPING && p->chan == chan){
       // if sleeping on timer int, only wake when necessary
       if(chan == &ticks){
@@ -618,21 +626,14 @@ wakeup1(void *chan)
         // since the process slept for n scheduling ticks
         // its tickets will be doubled for n rounds
         if(p->ticks_slept >= p->ticks_to_sleep) {
-          p->boosted_rounds += p->ticks_slept;
           p->state = RUNNABLE;
         }
       }
       else {
-        uint ticks0;
-        acquire(&tickslock);
-        ticks0 = ticks;
-        release(&tickslock);
-        
-        p->boosted_rounds += ticks0 - p->sleeping_at;
-        p->sleeping_at = 0;
         p->state = RUNNABLE;
       }
     }
+
   }
 }
 
