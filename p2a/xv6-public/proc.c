@@ -327,6 +327,7 @@ wait(void)
   }
 }
 
+// Getting the total number of tickets
 int
 get_total_tickets(void)
 {
@@ -337,6 +338,7 @@ get_total_tickets(void)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
     if(p->state == RUNNABLE){
+      // If processes are boosted, double the tickets
       total += p->boosted_rounds > 0 ? (2 * p->tickets) : p->tickets;
     }
   }
@@ -344,6 +346,7 @@ get_total_tickets(void)
   return total;          
 }
 
+// Holding the scheduler lottery
 struct proc*
 hold_lottery(int total_tickets) {
   if (total_tickets <= 0) {
@@ -509,6 +512,7 @@ forkret(void)
   // Return to "caller", actually trapret (see allocproc).
 }
 
+// System call to set lottery random seed
 void
 setseed(int seed)
 {
@@ -516,6 +520,7 @@ setseed(int seed)
   return;
 }
 
+// System call to obtain proc info
 int
 getpinfo(struct pstat* stat)
 {
@@ -540,6 +545,7 @@ getpinfo(struct pstat* stat)
   return 0;
 }
 
+// System call to set lottery tickets
 int
 settickets(int pid, int tickets)
 {

@@ -54,7 +54,6 @@ struct proc {
   int ticks_to_sleep;          // The number of timer ticks to sys_sleep()
   int ticks_slept;             // The number of timer ticks already slept
   int run_ticks;               // The number of timer ticks this was run
-  uint sleeping_at;             // The tick at which this proccess went to sleep
 };
 
 // Process memory is laid out contiguously, low addresses first:
