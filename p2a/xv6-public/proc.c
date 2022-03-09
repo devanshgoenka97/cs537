@@ -346,55 +346,51 @@ get_total_tickets(void)
 
 struct proc*
 hold_lottery(int total_tickets) {
-    if (total_tickets <= 0) {
-        cprintf("this function should only be called when at least 1 process is RUNNABLE");
-        return 0;
+  if (total_tickets <= 0) {
+      cprintf("this function should only be called when at least 1 process is RUNNABLE");
+      return 0;
+  }
+
+  // This number is between 0->4 billion
+  uint random_number = rand();
+  // Ensure that it is <= total number of tickets.
+  uint winner_ticket_number = 1 + (random_number % total_tickets);
+
+  uint current_count = 0;
+  int found_winner = 0;
+
+  struct proc* p;
+  struct proc* winner = 0;
+
+  // Hold lottery for all RUNNABLE processes
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == SLEEPING && p->chan != &ticks)
+      p->boosted_rounds++;
+
+    // only consider runnable processes
+    if(p->state != RUNNABLE){
+      continue;
     }
 
-    // This number is between 0->4 billion
-    uint random_number = rand();
-
-    // Ensure that it is <= total number of tickets.
-    uint winner_ticket_number = 1 + (random_number % total_tickets);
-
-    uint current_count = 0;
-
-    struct proc* p;
-    struct proc* winner = 0;
-
-    // Hold lottery for all RUNNABLE processes
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
-
-      // If boosted, then double the tickets the process has
-      int tickets_curr = p->boosted_rounds > 0 ? (2 * p->tickets) : p->tickets;
-      if ((tickets_curr + current_count) < winner_ticket_number){
-        current_count += tickets_curr;
-        continue;
-      }
-      
-      winner = p;
-      break;
+    // Haven't found lottery winner yet, look more
+    if (!found_winner){
+        // If boosted, then double the tickets the process has
+        int tickets_curr = p->boosted_rounds > 0 ? (2 * p->tickets) : p->tickets;
+        if ((tickets_curr + current_count) < winner_ticket_number){
+          current_count += tickets_curr;
+        }
+        else{
+          // found winning process
+          winner = p;
+          found_winner = 1;
+        }
     }
 
-    // Reduce the boosted rounds for processes that participated
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      // Boost the rounds for sleeping processes by one
-      if (p->state == SLEEPING && p->chan != &ticks){
-        p->boosted_rounds += 1;
-        continue;
-      }
+    // Reducing the boosts left for participating processes
+    p->boosted_rounds = p->boosted_rounds > 0 ? p->boosted_rounds - 1 : 0;
+  }
 
-      if(p->state != RUNNABLE)
-        continue;
-      
-      if(p->boosted_rounds >= 1) {
-        p->boosted_rounds--;
-      }
-    }
-
-    return winner;
+  return winner;
 }
 
 //PAGEBREAK: 42
@@ -422,12 +418,13 @@ scheduler(void)
     // Get tools to hold lottery
     int total_tickets = get_total_tickets();
 
-    struct proc *p;
+    struct proc *p = 0;
     
     if (total_tickets > 0) {
       p = hold_lottery(total_tickets);
     }
-    else {
+
+    if (p == 0) {
       // No RUNNABLE processes
       // Enable interrupts on this processor.
       release(&ptable.lock);
@@ -513,7 +510,7 @@ forkret(void)
 }
 
 void
-setseed(uint seed)
+setseed(int seed)
 {
   rseed = seed;
   return;

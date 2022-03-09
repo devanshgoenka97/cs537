@@ -72,11 +72,14 @@ sys_settickets(void)
 int
 sys_srand(void)
 {
-  uint* seed;
+  int seed;
 
-  argptr(0, (void *)&seed, sizeof(uint *));
+  if(argint(0, &seed) < 0)
+    return -1;
 
-  setseed(*seed);
+  cprintf("rseed = %d\n", seed);
+
+  setseed(seed);
 
   return 0;
 }
