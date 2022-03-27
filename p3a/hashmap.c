@@ -1,4 +1,6 @@
 #include <stdlib.h>
+#include <stddef.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -13,13 +15,16 @@ HashMap* MapInit(void)
     hashmap->contents = (MapPair**) calloc(MAP_INIT_CAPACITY, sizeof(MapPair*));
     hashmap->capacity = MAP_INIT_CAPACITY;
     hashmap->size = 0;
+    pthread_rwlock_init(&hashmap->rwlock, NULL);
     return hashmap;
 }
 
 void MapPut(HashMap* hashmap, char* key, void* value, int value_size)
 {
+    pthread_rwlock_wrlock(&hashmap->rwlock);
     if (hashmap->size > (hashmap->capacity / 2)) {
 	if (resize_map(hashmap) < 0) {
+        pthread_rwlock_unlock(&hashmap->rwlock);
 	    exit(0);
 	}
     }
@@ -37,6 +42,7 @@ void MapPut(HashMap* hashmap, char* key, void* value, int value_size)
 	if (!strcmp(key, hashmap->contents[h]->key)) {
 	    free(hashmap->contents[h]);
 	    hashmap->contents[h] = newpair;
+        pthread_rwlock_unlock(&hashmap->rwlock);
 	    return;
 	}
 	h++;
@@ -47,20 +53,26 @@ void MapPut(HashMap* hashmap, char* key, void* value, int value_size)
     // key not found in hashmap, h is an empty slot
     hashmap->contents[h] = newpair;
     hashmap->size += 1;
+
+    pthread_rwlock_unlock(&hashmap->rwlock);
 }
 
 char* MapGet(HashMap* hashmap, char* key)
 {
+    pthread_rwlock_rdlock(&hashmap->rwlock);
     int h = Hash(key, hashmap->capacity);
     while (hashmap->contents[h] != NULL) {
 	if (!strcmp(key, hashmap->contents[h]->key)) {
-	    return hashmap->contents[h]->value;
+        char* value = hashmap->contents[h]->value;
+        pthread_rwlock_unlock(&hashmap->rwlock);
+	    return value;
 	}
 	h++;
 	if (h == hashmap->capacity) {
 	    h = 0;
 	}
     }
+    pthread_rwlock_unlock(&hashmap->rwlock);
     return NULL;
 }
 

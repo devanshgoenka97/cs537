@@ -23,6 +23,7 @@ void Map(char *file_name) {
             MR_Emit(token, "1");
         }
     }
+
     free(line);
     fclose(fp);
 }
@@ -30,11 +31,14 @@ void Map(char *file_name) {
 void Reduce(char *key, Getter get_next, int partition_number) {
     // HashMap take a (void *) as value
     int *count = (int*)malloc(sizeof(int));
+
     *count = 0;
     char *value;
     
     while ((value = get_next(key, partition_number)) != NULL)
+    {
         (*count)++;
+    }
 
     MapPut(hashmap, key, count, sizeof(int));
 }
