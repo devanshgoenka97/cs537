@@ -1,6 +1,9 @@
 #ifndef __hashmap_h__
 #define __hashmap_h__
 
+#include <stdlib.h>
+#include <pthread.h>
+
 #define MAP_INIT_CAPACITY 11
 
 typedef struct {
