@@ -43,6 +43,38 @@ sys_getpid(void)
 }
 
 int
+sys_clone(void)
+{
+  void (*fcn) (void*, void*);
+  void* arg1;
+  void* arg2;
+  void* stack;
+
+  if (argptr(0, (void*)&fcn, sizeof(void *)) < 0)
+    return -1;
+
+  if (argptr(1, (void*)&arg1, sizeof(void *)) < 0 || argptr(2, (void*)&arg2, sizeof(void *)) < 0)
+    return -1;
+
+  // checking for page alignment of stack as well
+  if (argptr(3, (void*)&stack, sizeof(void *)) < 0 || (uint)stack % PGSIZE)
+    return -1;
+
+  return clone(fcn, arg1, arg2, stack);
+}
+
+int
+sys_join(void)
+{
+  void** stack;
+
+  if (argptr(0, (void*)&stack, sizeof(void *)) < 0)
+    return -1;
+
+  return join(stack);
+}
+
+int
 sys_sbrk(void)
 {
   int addr;
