@@ -57,7 +57,11 @@ sys_clone(void)
     return -1;
 
   // checking for page alignment of stack as well
-  if (argptr(3, (void*)&stack, sizeof(void *)) < 0 || (uint)stack % PGSIZE)
+  if (argptr(3, (void*)&stack, sizeof(void *)) < 0)
+    return -1;
+
+  // checking for page alignment and stack size
+  if ((uint)stack % PGSIZE || ((uint)stack + PGSIZE) > myproc()->sz)
     return -1;
 
   return clone(fcn, arg1, arg2, stack);
