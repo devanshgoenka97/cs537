@@ -687,7 +687,10 @@ int getpgtable(struct pt_entry* pt_entries, int num, int wsetOnly) {
 
 int dump_rawphymem(char *physical_addr, char * buffer) {
   cprintf("p4Debug: dump_rawphymem: %p, %p\n", physical_addr, buffer);
+  cprintf("p4Debug: touching buffer to decrypt the page\n");
+  *buffer = *buffer;
   int retval = copyout(myproc()->pgdir, (uint) buffer, (void *) PGROUNDDOWN((int)P2V(physical_addr)), PGSIZE);
+  
   if (retval)
     return -1;
   return 0;

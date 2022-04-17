@@ -186,8 +186,13 @@ growproc(int n)
 
    // Encrypt newly allocated pages
   if (n > 0){
-    cprintf("p4Debug: mencrypt in growproc()\n");
-    mencrypt((char *) oldsz - 1, (n/PGSIZE) + 1);
+    cprintf("p4Debug: encrypting new pages in growproc() \n");
+    if (oldsz % PGSIZE == 0) {
+      mencrypt((char *) oldsz, PGROUNDUP(n)/PGSIZE);
+    }
+    else {
+      mencrypt((char *) PGROUNDUP(oldsz), (PGROUNDUP(oldsz+n) - PGROUNDUP(oldsz))/PGSIZE);
+    }
   }
 
   switchuvm(curproc);
