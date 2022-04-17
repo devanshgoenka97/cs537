@@ -60,11 +60,16 @@ exec(char *path, char **argv)
   end_op();
   ip = 0;
 
+  // Encrypt page before the stack is allocated
+  int nopages = PGROUNDDOWN(sz) == 0 ? 1 : PGROUNDDOWN(sz)/PGSIZE;
+  mencrypt((char *)0, nopages);
+
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible.  Use the second as the user stack.
   sz = PGROUNDUP(sz);
   if((sz = allocuvm(pgdir, sz, sz + 2*PGSIZE)) == 0)
     goto bad;
+  
   clearpteu(pgdir, (char*)(sz - 2*PGSIZE));
   sp = sz;
 
@@ -99,6 +104,9 @@ exec(char *path, char **argv)
   curproc->sz = sz;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
+
+  // Encrypting the created stack
+  mencrypt((char *)sz-1, 1);
   switchuvm(curproc);
   freevm(oldpgdir);
   return 0;

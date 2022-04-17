@@ -88,6 +88,15 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  
+  // set all nodes of the working set to be unused
+  for(int i=0;i<CLOCKSIZE;i++){
+    p->wset[i].used = 0;
+    p->wset[i].pte = 0;
+  }
+
+  // Set the head of the wset to NULL
+  p->head = 0;
 
   release(&ptable.lock);
 
@@ -159,9 +168,11 @@ int
 growproc(int n)
 {
   uint sz;
+  uint oldsz;
   struct proc *curproc = myproc();
 
   sz = curproc->sz;
+  oldsz = sz;
   if(n > 0){
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
@@ -170,6 +181,11 @@ growproc(int n)
       return -1;
   }
   curproc->sz = sz;
+  
+  // encrypt newly allocated pages
+  cprintf("p4Debug: mencrypt in growproc()\n");
+  mencrypt((char *) oldsz - PGSIZE, (n/PGSIZE) + 1);
+
   switchuvm(curproc);
   return 0;
 }

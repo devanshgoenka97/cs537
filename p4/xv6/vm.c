@@ -444,6 +444,7 @@ int mdecrypt(char *virtual_addr) {
 
   char * kvp = uva2ka(mypd, virtual_addr);
   if (!kvp || *kvp == 0) {
+    cprintf("p4Debug: mdecrypt : kvp is %p\n", kvp);
     return -1;
   }
   char * slider = virtual_addr;
@@ -506,8 +507,8 @@ int mencrypt(char *virtual_addr, int len) {
   return 0;
 }
 
-int getpgtable(struct pt_entry* pt_entries, int num) {
-  cprintf("p4Debug: getpgtable: %p, %d\n", pt_entries, num);
+int getpgtable(struct pt_entry* pt_entries, int num, int wsetOnly) {
+  cprintf("p4Debug: getpgtable: %p, %d, %d\n", pt_entries, num, wsetOnly);
 
   struct proc *curproc = myproc();
   pde_t *pgdir = curproc->pgdir;
