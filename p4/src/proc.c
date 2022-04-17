@@ -95,8 +95,9 @@ found:
     p->wset[i].pte = 0;
   }
 
-  // Set the head of the wset to NULL
+  // Set the head and size of wset to 0
   p->head = 0;
+  p->wssize = 0;
 
   release(&ptable.lock);
 
@@ -180,11 +181,14 @@ growproc(int n)
     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   }
+
   curproc->sz = sz;
-  
-  // encrypt newly allocated pages
-  cprintf("p4Debug: mencrypt in growproc()\n");
-  mencrypt((char *) oldsz - PGSIZE, (n/PGSIZE) + 1);
+
+   // Encrypt newly allocated pages
+  if (n > 0){
+    cprintf("p4Debug: mencrypt in growproc()\n");
+    mencrypt((char *) oldsz - 1, (n/PGSIZE) + 1);
+  }
 
   switchuvm(curproc);
   return 0;
@@ -215,6 +219,14 @@ fork(void)
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
+
+  // Deep copying the parent's working set
+  np->head = curproc->head;
+  np->wssize = curproc->wssize;
+  for(int i=0; i<CLOCKSIZE; i++){
+    np->wset[i].used = curproc->wset[i].used;
+    np->wset[i].pte = curproc->wset[i].pte;
+  }
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;

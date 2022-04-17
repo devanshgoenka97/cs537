@@ -64,7 +64,7 @@ main(int argc, char **argv)
                 pt_entries[i].encrypted
             );
 
-            if (dump_rawphymem((char *)(pt_entries[i].ppage * PGSIZE), buffer) != 0)
+            if (dump_rawphymem((pt_entries[i].ppage * PGSIZE), buffer) != 0)
                 err("dump_rawphymem return non-zero value\n");
             
             uint expected = 0xAA;

@@ -50,7 +50,8 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
   wsnode_t wset[CLOCKSIZE];    // The working set of the process
-  int head;              // The head of the working set
+  int head;                    // The head of the working set
+  int wssize;                  // The current size of working set
 };
 
 // Process memory is laid out contiguously, low addresses first:

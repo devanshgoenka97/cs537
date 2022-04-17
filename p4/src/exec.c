@@ -62,7 +62,6 @@ exec(char *path, char **argv)
 
   // Encrypt page before the stack is allocated
   int nopages = PGROUNDDOWN(sz) == 0 ? 1 : PGROUNDDOWN(sz)/PGSIZE;
-  mencrypt((char *)0, nopages);
 
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible.  Use the second as the user stack.
@@ -105,10 +104,23 @@ exec(char *path, char **argv)
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
 
-  // Encrypting the created stack
-  mencrypt((char *)sz-1, 1);
   switchuvm(curproc);
   freevm(oldpgdir);
+
+  // Clearing out wset for the current process
+  curproc->head = 0;
+  curproc->wssize = 0;
+  for(int i=0; i<CLOCKSIZE; i++){
+    curproc->wset[i].used = 0;
+    curproc->wset[i].pte = 0;
+  }
+  
+  // Encrypt the code segment
+  mencrypt((char *)0, nopages);
+
+  // Encrypting the created stack
+  mencrypt((char *)sz-1, 1);
+
   return 0;
 
  bad:

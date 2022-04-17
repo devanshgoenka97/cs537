@@ -256,6 +256,46 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   return newsz;
 }
 
+// Remove an asked page from working set
+int remove_from_wset(struct proc* p, uint va) {
+  // Queue is empty, nothing to do
+  if(p->wssize == 0)
+    return 0;
+
+  cprintf("Removing asked page %p from queue\n", (uint) va);
+
+  int i = p->head;
+  int count = CLOCKSIZE;
+  while(count-- && p->wset[i % CLOCKSIZE].pte != va) i++;
+
+  // VA not found in queue
+  if(count == 0)
+    return -1;
+  
+  // The VA to be removed is p->wset[i].pte
+  p->wset[i % CLOCKSIZE].pte = 0;
+  p->wset[i % CLOCKSIZE].used = 0;
+
+  // Decrement the size
+  p->wssize--;
+
+  // Queue is empty, re-init
+  if(p->wssize == 0){
+    p->head = 0;
+    return 0;
+  }
+
+  // Find a new head to the queue
+  if ((i % CLOCKSIZE) == p->head) {
+    while(p->wset[p->head].used == 0) {
+      p->head++;
+      p->head %= CLOCKSIZE;
+    }
+  }
+
+  return 0;
+}
+
 // Deallocate user pages to bring the process size from oldsz to
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
 // need to be less than oldsz.  oldsz can be larger than the actual
@@ -265,6 +305,8 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
   pte_t *pte;
   uint a, pa;
+
+  struct proc* p = myproc();
 
   if(newsz >= oldsz)
     return oldsz;
@@ -280,6 +322,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
         panic("kfree");
       char *v = P2V(pa);
       kfree(v);
+      remove_from_wset(p, a);
       *pte = 0;
     }
   }
@@ -397,6 +440,81 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
   return 0;
 }
 
+// Add decrypted page to queue
+int add_to_wset(uint va, struct proc* p) {
+  // Queue is full
+  if(p->wssize == CLOCKSIZE)
+    return -1;
+
+  // Start traversal from head
+  int i = p->head;
+
+  // Traverse the ring buffer to find empty slot
+  while((p->wset[i % CLOCKSIZE]).used) i++;
+
+  // Found empty slot in (i%CLOCKSIZE)
+  p->wset[i % CLOCKSIZE].used = 1;
+  p->wset[i % CLOCKSIZE].pte = va;
+
+  // Increment buffer size
+  p->wssize++;
+
+  cprintf("p4Debug :: Add page %p to queue -- pid = %d, qsize = %d\n", va, p->pid, p->wssize);
+  return 0;
+}
+
+// Evict page from working set
+int evict_from_wset(struct proc* p) {
+  // Queue is not full, no need to evict
+  if(p->wssize < CLOCKSIZE)
+    return -1;
+
+  pde_t* mypd = p->pgdir;
+
+  int victim;
+
+  // Traverse the ring buffer to find empty slot
+  int i = p->head;
+
+  while(1) {
+    pte_t * pte = walkpgdir(mypd, (char *)p->wset[i].pte, 0);
+    cprintf("Inside clock :: i = %d\n", i);
+
+    // Access bit is set, go to the next page
+    if (*pte & PTE_A){
+      // Clear the access bit
+      *pte = *pte & ~PTE_A;
+
+      i++;
+      i = i % CLOCKSIZE;
+
+      // Move the head forward as well
+      p->head = i;
+      continue;
+    }
+
+    // Found victim page to evict
+    victim = i;
+    break;
+  }
+
+  // Create empty slot in victim page
+  uint evicted = p->wset[victim].pte;
+  p->wset[victim].used = 0;
+  p->wset[victim].pte = 0;
+
+  // Decrement buffer size
+  p->wssize--;
+
+  if(p->wssize == 0){
+    p->head = 0;
+  }
+
+  cprintf("p4Debug :: Evict page %p to queue -- pid = %d, qsize = %d\n", evicted, p->pid, p->wssize);
+
+  return evicted;
+}
+
 //This function is just like uva2ka but sets the PTE_E bit and clears PTE_P
 char* translate_and_set(pde_t *pgdir, char *uva) {
   cprintf("p4Debug: setting PTE_E for %p, VPN %d\n", uva, PPN(uva));
@@ -420,7 +538,6 @@ char* translate_and_set(pde_t *pgdir, char *uva) {
   cprintf("p4Debug: PTE is now %x\n", *pte);
   return (char*)P2V(PTE_ADDR(*pte));
 }
-
 
 int mdecrypt(char *virtual_addr) {
   cprintf("p4Debug:  mdecrypt VPN %d, %p, pid %d\n", PPN(virtual_addr), virtual_addr, myproc()->pid);
@@ -452,6 +569,17 @@ int mdecrypt(char *virtual_addr) {
     *slider = *slider ^ 0xFF;
     slider++;
   }
+
+  // Decryption successful - try to add page to working set
+  if(add_to_wset((uint)virtual_addr, p) < 0) {
+     // Adding failed, queue full -- evict 
+     uint evicted = evict_from_wset(p);
+     // Add new page to end of queue
+     add_to_wset((uint)virtual_addr, p);
+     // Encrypt the evicted page and set flags
+     mencrypt((char *)evicted, 1);
+  }
+ 
   return 0;
 }
 
@@ -521,7 +649,20 @@ int getpgtable(struct pt_entry* pt_entries, int num, int wsetOnly) {
   int i = 0;
   for (;;uva -=PGSIZE)
   {
-    
+
+    int inwset = 0;
+    for(int i=0; i<CLOCKSIZE; i++){
+      if(curproc->wset[i].used == 1 && curproc->wset[i].pte == uva) {
+        inwset++;
+        break;
+      }
+    }
+
+    // If wsetOnly flag true, return only pages in wset of curproc
+    if(wsetOnly && !inwset){
+      continue;
+    }
+
     pte_t *pte = walkpgdir(pgdir, (const void *)uva, 0);
 
     if (!(*pte & PTE_U) || !(*pte & (PTE_P | PTE_E)))
@@ -543,7 +684,6 @@ int getpgtable(struct pt_entry* pt_entries, int num, int wsetOnly) {
   return i;
 
 }
-
 
 int dump_rawphymem(char *physical_addr, char * buffer) {
   cprintf("p4Debug: dump_rawphymem: %p, %p\n", physical_addr, buffer);
