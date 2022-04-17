@@ -61,7 +61,7 @@ exec(char *path, char **argv)
   ip = 0;
 
   // Encrypt page before the stack is allocated
-  int nopages = PGROUNDDOWN(sz) == 0 ? 1 : PGROUNDDOWN(sz)/PGSIZE;
+  int nopages = PGROUNDUP(sz)/PGSIZE;
 
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible.  Use the second as the user stack.

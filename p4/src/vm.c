@@ -78,6 +78,8 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
     else
       *pte = pa | perm | PTE_P;
 
+    // Clearing access bit on PTE
+    *pte = *pte & ~PTE_A;
 
     if(a == last)
       break;
@@ -649,9 +651,10 @@ int getpgtable(struct pt_entry* pt_entries, int num, int wsetOnly) {
   int i = 0;
   for (;;uva -=PGSIZE)
   {
-
     int inwset = 0;
-    for(int i=0; i<CLOCKSIZE; i++){
+    for(int i=0; i < CLOCKSIZE; i++){
+
+      // Collect all PTEs in the working set of curproc
       if(curproc->wset[i].used == 1 && curproc->wset[i].pte == uva) {
         inwset++;
         break;
@@ -674,7 +677,7 @@ int getpgtable(struct pt_entry* pt_entries, int num, int wsetOnly) {
     pt_entries[i].present = *pte & PTE_P;
     pt_entries[i].writable = (*pte & PTE_W) > 0;
     pt_entries[i].encrypted = (*pte & PTE_E) > 0;
-    pt_entries[i].ref = (*pte & PTE_A) > 0;
+    pt_entries[i].ref = inwset ? 1 : 0;
     //PT_A flag needs to be modified as per clock algo.
     i ++;
     if (uva == 0 || i == num) break;
@@ -690,7 +693,7 @@ int dump_rawphymem(char *physical_addr, char * buffer) {
   cprintf("p4Debug: touching buffer to decrypt the page\n");
   *buffer = *buffer;
   int retval = copyout(myproc()->pgdir, (uint) buffer, (void *) PGROUNDDOWN((int)P2V(physical_addr)), PGSIZE);
-  
+
   if (retval)
     return -1;
   return 0;
