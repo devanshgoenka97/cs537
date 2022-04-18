@@ -17,14 +17,13 @@ void access_all_dummy_pages(char **dummy_pages, uint len) {
     for (int i = 0; i < len; i++) {
         char temp = dummy_pages[i][0];
         temp = temp;
-        printf(1, "TEST 8 : Touching dummy page 0x%p\n", dummy_pages[i]);
     }
     printf(1, "\n");
 }
 
 int main(void) {
-    const uint PAGES_NUM = 32;
-    const uint expected_dummy_pages_num = 4;
+    const uint PAGES_NUM = 256;
+    const uint expected_dummy_pages_num = 12;
     // These pages are used to make sure the test result is consistent for different text pages number
     char *dummy_pages[expected_dummy_pages_num];
     char *buffer = sbrk(PGSIZE * sizeof(char));
@@ -56,29 +55,63 @@ int main(void) {
     // and bring all of them into the clock queue
     int heap_pages_num = CLOCKSIZE - expected_dummy_pages_num - 1;
     char *ptr = sbrk(heap_pages_num * PGSIZE * sizeof(char));
-    ptr[heap_pages_num / 2 * PGSIZE] = 0xAA;
     for (int i = 0; i < heap_pages_num; i++) {
-      for (int j = 0; j < PGSIZE; j++) {
-        ptr[i * PGSIZE + j] = 0xAA;
-      }
+        if (i % 7 == 0) {
+            for (int j = 0; j < PGSIZE; j++) {
+                ptr[i * PGSIZE + j] = 0xAA;
+            }
+        }
     }
+
+    for (int i = heap_pages_num - 1; i >= 0; i--) {
+        if (i % 13 == 0) {
+            for (int j = 0; j < PGSIZE; j++) {
+                ptr[i * PGSIZE + j] = 0xAA;
+            }
+        }
+    }
+
+    for (int i = 0; i < heap_pages_num; i++) {
+        if (i % 2 == 0) {
+            for (int j = 0; j < PGSIZE; j++) {
+                ptr[i * PGSIZE + j] = 0xAA;
+            }
+        }
+    }
+
+    for (int i = heap_pages_num - 1; i >= 0; i--) {
+        for (int j = 0; j < PGSIZE; j++) {
+            ptr[i * PGSIZE + j] = 0xAA;
+        }
+    }
+
+
+
     
     // An extra page which will trigger the page eviction
-    // This eviction will evict page 0
-    char* extra_pages = sbrk(PGSIZE * sizeof(char));
-    for (int j = 0; j < PGSIZE; j++) {
-      extra_pages[j] = 0xAA;
+    int extra_pages_num = 32;
+    char* extra_pages = sbrk( extra_pages_num * PGSIZE * sizeof(char));
+    for (int i = 0; i < extra_pages_num; i++) {
+      for (int j = 0; j < PGSIZE; j++) {
+        extra_pages[i * PGSIZE + j] = 0xAA;
+      }
+    }
+
+    for (int i = 0; i < heap_pages_num; i++) {
+      if (i % 5 == 0) {
+        for (int j = 0; j < PGSIZE; j++) {
+          ptr[i * PGSIZE + j] = 0xAA;
+        }
+      }
     }
 
     // Bring all the dummy pages and buffer back to the 
     // clock queue and reset their ref to 1
-    // At this time, the first heap-allocated page is ensured to be evicted
     access_all_dummy_pages(dummy_pages, expected_dummy_pages_num);
     buffer[0] = buffer[0];
 
-    // Verify that the pages pointed by the ptr is evicted
-    int retval = getpgtable(pt_entries, heap_pages_num + 1, 0);
-    if (retval == heap_pages_num + 1) {
+    int retval = getpgtable(pt_entries, heap_pages_num + extra_pages_num, 0);
+    if (retval == heap_pages_num + extra_pages_num) {
       for (int i = 0; i < retval; i++) {
           printf(1, "XV6_TEST_OUTPUT Index %d: pdx: 0x%x, ptx: 0x%x, writable bit: %d, encrypted: %d, ref: %d\n", 
               i,

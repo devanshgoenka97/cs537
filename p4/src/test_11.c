@@ -17,7 +17,7 @@ void access_all_dummy_pages(char **dummy_pages, uint len) {
     for (int i = 0; i < len; i++) {
         char temp = dummy_pages[i][0];
         temp = temp;
-        printf(1, "TEST 8 : Touching dummy page 0x%p\n", dummy_pages[i]);
+        // printf(1, "0x%x ", dummy_pages[i]);
     }
     printf(1, "\n");
 }
@@ -57,56 +57,65 @@ int main(void) {
     int heap_pages_num = CLOCKSIZE - expected_dummy_pages_num - 1;
     char *ptr = sbrk(heap_pages_num * PGSIZE * sizeof(char));
     ptr[heap_pages_num / 2 * PGSIZE] = 0xAA;
-    for (int i = 0; i < heap_pages_num; i++) {
-      for (int j = 0; j < PGSIZE; j++) {
-        ptr[i * PGSIZE + j] = 0xAA;
-      }
+    for (int i = heap_pages_num - 1; i >= 0; i--) {
+        for (int j = 0; j < PGSIZE; j++) {
+            ptr[i * PGSIZE + j] = 0xAA;
+        }
     }
     
     // An extra page which will trigger the page eviction
-    // This eviction will evict page 0
     char* extra_pages = sbrk(PGSIZE * sizeof(char));
+
     for (int j = 0; j < PGSIZE; j++) {
-      extra_pages[j] = 0xAA;
+        extra_pages[j] = 0xAA;
     }
 
     // Bring all the dummy pages and buffer back to the 
     // clock queue and reset their ref to 1
-    // At this time, the first heap-allocated page is ensured to be evicted
     access_all_dummy_pages(dummy_pages, expected_dummy_pages_num);
     buffer[0] = buffer[0];
 
-    // Verify that the pages pointed by the ptr is evicted
-    int retval = getpgtable(pt_entries, heap_pages_num + 1, 0);
-    if (retval == heap_pages_num + 1) {
-      for (int i = 0; i < retval; i++) {
-          printf(1, "XV6_TEST_OUTPUT Index %d: pdx: 0x%x, ptx: 0x%x, writable bit: %d, encrypted: %d, ref: %d\n", 
-              i,
-              pt_entries[i].pdx,
-              pt_entries[i].ptx,
-              pt_entries[i].writable,
-              pt_entries[i].encrypted,
-              pt_entries[i].ref
-          ); 
-          
-          uint expected = 0xAA;
-          if (pt_entries[i].encrypted)
-            expected = ~0xAA;
 
-          if (dump_rawphymem(pt_entries[i].ppage * PGSIZE, buffer) != 0)
-              err("dump_rawphymem return non-zero value\n");
-          
-          for (int j = 0; j < PGSIZE; j++) {
-              if (buffer[j] != (char)expected) {
-                  // err("physical memory is dumped incorrectly\n");
-                    printf(1, "XV6_TEST_OUTPUT: content is incorrect at address 0x%x: expected 0x%x, got 0x%x\n", ((uint)(pt_entries[i].pdx) << 22 | (pt_entries[i].ptx) << 12) + j ,expected & 0xFF, buffer[j] & 0xFF);
-                    exit();
-              }
-          }
+    if (fork() == 0) {
+        printf(1, "XV6_TEST_OUTPUT Child process is calling getpgtable\n");
+        int retval = getpgtable(pt_entries, heap_pages_num + 1, 0);
+        if (retval == heap_pages_num + 1) {
+            for (int i = 0; i < retval; i++) {
+                printf(1, "XV6_TEST_OUTPUT Index %d: pdx: 0x%x, ptx: 0x%x, writable bit: %d, encrypted: %d, ref: %d\n", 
+                    i,
+                    pt_entries[i].pdx,
+                    pt_entries[i].ptx,
+                    pt_entries[i].writable,
+                    pt_entries[i].encrypted,
+                    pt_entries[i].ref
+                ); 
+                
+                uint expected = 0xAA;
+                if (pt_entries[i].encrypted)
+                    expected = ~0xAA;
 
-      }
-    } else
-        printf(1, "XV6_TEST_OUTPUT: getpgtable returned incorrect value: expected %d, got %d\n", heap_pages_num, retval);
+                if (dump_rawphymem(pt_entries[i].ppage * PGSIZE, buffer) != 0)
+                    err("dump_rawphymem return non-zero value\n");
+                
+                for (int j = 0; j < PGSIZE; j++) {
+                    if (buffer[j] != (char)expected) {
+                        // err("physical memory is dumped incorrectly\n");
+                            printf(1, "XV6_TEST_OUTPUT: content is incorrect at address 0x%x: expected 0x%x, got 0x%x\n", ((uint)(pt_entries[i].pdx) << 22 | (pt_entries[i].ptx) << 12) + j ,expected & 0xFF, buffer[j] & 0xFF);
+                            exit();
+                    }
+                }
+            }
+
+        } else {
+            printf(1, "XV6_TEST_OUTPUT: getpgtable returned incorrect value: expected %d, got %d\n", heap_pages_num, retval);
+            exit();
+        }
+    } else {
+        wait();
+    }
+
     
+
+
     exit();
 }

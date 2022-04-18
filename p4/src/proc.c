@@ -228,7 +228,9 @@ fork(void)
   // Deep copying the parent's working set
   np->head = curproc->head;
   np->wssize = curproc->wssize;
+  cprintf("IN FORK :::: curproc->head = %d, size = %d\n", curproc->head, curproc->wssize);
   for(int i=0; i<CLOCKSIZE; i++){
+    cprintf("IN FORK :: QUEUE :: i=%d, used = %d, va = %p\n", i, curproc->wset[i].used, curproc->wset[i].pte);
     np->wset[i].used = curproc->wset[i].used;
     np->wset[i].pte = curproc->wset[i].pte;
   }

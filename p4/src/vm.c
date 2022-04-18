@@ -78,9 +78,6 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
     else
       *pte = pa | perm | PTE_P;
 
-    // Clearing access bit on PTE
-    *pte = *pte & ~PTE_A;
-
     if(a == last)
       break;
     a += PGSIZE;
@@ -308,7 +305,13 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   pte_t *pte;
   uint a, pa;
 
-  struct proc* p = myproc();
+  struct proc* p;
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    // Found the process on whose pgdir deallocuvm is called
+    if(p->pgdir == pgdir){
+      break;
+    }
+  }
 
   if(newsz >= oldsz)
     return oldsz;
@@ -382,6 +385,9 @@ copyuvm(pde_t *pgdir, uint sz)
       panic("p4Debug: inside copyuvm, page not present");
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
+    if (flags & PTE_A){
+      cprintf("COPY UVM :: Access bit set for va = %p\n", i);
+    }
     if((mem = kalloc()) == 0)
       goto bad;
     memmove(mem, (char*)P2V(pa), PGSIZE);
@@ -479,16 +485,24 @@ int evict_from_wset(struct proc* p) {
   int i = p->head;
 
   while(1) {
+
+    if(!p->wset[i].used){
+      i++;
+      i %= CLOCKSIZE;
+      continue;
+    }
+
     pte_t * pte = walkpgdir(mypd, (char *)p->wset[i].pte, 0);
     cprintf("Inside clock :: i = %d\n", i);
 
     // Access bit is set, go to the next page
     if (*pte & PTE_A){
+      
       // Clear the access bit
       *pte = *pte & ~PTE_A;
 
       i++;
-      i = i % CLOCKSIZE;
+      i %= CLOCKSIZE;
 
       // Move the head forward as well
       p->head = i;
@@ -504,6 +518,14 @@ int evict_from_wset(struct proc* p) {
   uint evicted = p->wset[victim].pte;
   p->wset[victim].used = 0;
   p->wset[victim].pte = 0;
+
+  // Find a new head to the queue
+  if (victim == p->head) {
+    while(p->wset[p->head].used == 0) {
+      p->head++;
+      p->head %= CLOCKSIZE;
+    }
+  }
 
   // Decrement buffer size
   p->wssize--;
@@ -537,6 +559,9 @@ char* translate_and_set(pde_t *pgdir, char *uva) {
   cprintf("p4Debug: PTE was %x and its pointer %p\n", *pte, pte);
   *pte = *pte | PTE_E;
   *pte = *pte & ~PTE_P;
+
+  // Clear PTE_A bit when encrypting
+  *pte = *pte & ~PTE_A;
   cprintf("p4Debug: PTE is now %x\n", *pte);
   return (char*)P2V(PTE_ADDR(*pte));
 }
@@ -575,12 +600,17 @@ int mdecrypt(char *virtual_addr) {
   // Decryption successful - try to add page to working set
   if(add_to_wset((uint)virtual_addr, p) < 0) {
      // Adding failed, queue full -- evict 
-     uint evicted = evict_from_wset(p);
+     uint rc = evict_from_wset(p);
+     if(rc<0)
+       panic("evict");
      // Add new page to end of queue
      add_to_wset((uint)virtual_addr, p);
      // Encrypt the evicted page and set flags
-     mencrypt((char *)evicted, 1);
+     mencrypt((char *)rc, 1);
   }
+
+  // Set PTE_A flag manually on decryped page
+  *pte = *pte | PTE_A;
  
   return 0;
 }
@@ -677,9 +707,9 @@ int getpgtable(struct pt_entry* pt_entries, int num, int wsetOnly) {
     pt_entries[i].present = *pte & PTE_P;
     pt_entries[i].writable = (*pte & PTE_W) > 0;
     pt_entries[i].encrypted = (*pte & PTE_E) > 0;
-    pt_entries[i].ref = inwset ? 1 : 0;
+    pt_entries[i].ref = (*pte & PTE_A) > 0;
     //PT_A flag needs to be modified as per clock algo.
-    i ++;
+    i++;
     if (uva == 0 || i == num) break;
 
   }
