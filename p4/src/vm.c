@@ -305,29 +305,26 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   pte_t *pte;
   uint a, pa;
 
-  struct proc* p;
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    // Found the process on whose pgdir deallocuvm is called
-    if(p->pgdir == pgdir){
-      break;
-    }
-  }
+  struct proc* p = myproc();
 
   if(newsz >= oldsz)
     return oldsz;
 
   a = PGROUNDUP(newsz);
+
   for(; a  < oldsz; a += PGSIZE){
     pte = walkpgdir(pgdir, (char*)a, 0);
     if(!pte)
       a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
     else if((*pte & (PTE_P | PTE_E)) != 0){
+      // Only remove from queue when curproc calls sbrk() with len <0
+      if (*(p->pgdir) == *pgdir)
+        remove_from_wset(p, a);
       pa = PTE_ADDR(*pte);
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
       kfree(v);
-      remove_from_wset(p, a);
       *pte = 0;
     }
   }
