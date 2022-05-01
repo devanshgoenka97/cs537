@@ -110,8 +110,6 @@ int copydata(int fd, char* filename, off_t start_inode_table, int ino) {
 					int read = read_data(fd, *arr, buffer, 
 						to_read > (int)block_size ? (int)block_size : to_read);
 
-					//printf("Read %d bytes\n", read);
-
 					// Write to output file buffer
 					write(fd2write, buffer, read);
 					to_read -= read;
@@ -159,8 +157,6 @@ int main(int argc, char **argv) {
 	// Initialize the ext2 reader
 	ext2_read_init(fd);
 
-	printf("There are %u inodes in an inode table block and %u blocks in the inode table\n", inodes_per_block, itable_blocks);
-
 	struct ext2_super_block super;
 	// Just read the first superblock
 	read_super_block(fd, 0, &super);
@@ -205,14 +201,12 @@ int main(int argc, char **argv) {
 
 			int read = read_data(fd, inode.i_block[0], buffer, block_size);
 
-			if (read > 0 && isjpeg(buffer))
-			{
-				printf("runscan: found jpeg file at inode %u\n", ino + global_ino);
-			}
-			else {
+			if (read < 0 || !isjpeg(buffer)) {
 				// Not a JPEG file
 				continue;
 			}
+
+			//printf("runscan: found jpeg file at inode %u\n", ino + global_ino);
 
 			char filename[255];
 			sprintf(filename, "%s/file-%d.jpg", argv[2], ino + global_ino);
@@ -237,6 +231,7 @@ int main(int argc, char **argv) {
 		// Get the first inode table block in the group
 		off_t start_inode_table = locate_inode_table(ngroup, group);
 
+		// Iterate over all inodes in the group
     	for (unsigned int ino = 1; ino < inodes_per_group; ino++) {
 			// ino is relative to the block
 			struct ext2_inode inode;
@@ -295,8 +290,6 @@ int main(int argc, char **argv) {
 				// Finding hidden entries by offsetting through name_len instead of rec_len
 				offset += name_len + 8;
 			}
-
-
         }
 	}
 	
