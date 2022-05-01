@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <dirent.h>
+#include <string.h>
 #include "ext2_fs.h"
 #include "read_ext2.h"
 
@@ -18,6 +19,113 @@ int isjpeg(char* buffer) {
 		is_jpg = 1;
 	}
 	return is_jpg;
+}
+
+//Utiliy to copy data from inode ino to outdir
+int copydata(int fd, char* filename, off_t start_inode_table, int ino) {
+	struct ext2_inode inode;
+
+	// Read the inode from the disk
+	read_inode(fd, start_inode_table, ino, &inode);
+
+	// If not a regular file, skip
+	if (!S_ISREG(inode.i_mode))
+		return -1;
+
+	// Nothing to copy
+	if (inode.i_blocks == 0)
+		return 0;
+
+	// Create new file in out directory
+	int fd2write = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+
+	// Copy image to out directory
+	int to_read = inode.i_size;
+
+	// The current data block pointed to by the inode
+	int j = 0;
+
+	// Use direct pointers first
+	while (j < EXT2_NDIR_BLOCKS && to_read > 0) {
+		char buffer[block_size];
+
+		// Copy the max(to_read, block_size) from the data blocks
+		int read = read_data(fd, inode.i_block[j++], buffer, 
+			to_read > (int)block_size ? (int)block_size : to_read);
+
+		// Write to output file buffer
+		write(fd2write, buffer, read);
+		to_read -= read;
+	}
+
+	// Use the single indirect block to read
+	if(to_read > 0) {
+		unsigned int blocks[block_size/sizeof(unsigned int)];
+
+		unsigned int* arr = blocks;
+
+		// Read one block of indirect blocks
+		read_data(fd, inode.i_block[EXT2_IND_BLOCK], (char *)blocks, block_size);
+
+		int iterations = block_size/sizeof(unsigned int);
+
+		while(iterations-- > 0 && to_read > 0) {
+			char buffer[block_size];
+
+			// Copy the max(to_read, block_size) from the data blocks
+			int read = read_data(fd, *arr, buffer, 
+				to_read > (int)block_size ? (int)block_size : to_read);
+
+			// Write to output file buffer
+			write(fd2write, buffer, read);
+			to_read -= read;
+			arr++;
+		}
+
+		// Need double indirect pointers
+		if (to_read > 0) {
+			unsigned int ind_blocks[block_size/sizeof(unsigned int)];
+			unsigned int* ind_arr = ind_blocks;
+
+			// Read one block of indirect blocks
+			read_data(fd, inode.i_block[EXT2_DIND_BLOCK], (char *)ind_blocks, block_size);
+
+			int out_iterations = block_size/sizeof(unsigned int);
+
+			// Iterate over block of indirect pointers
+			while(out_iterations-- > 0 && to_read > 0) {
+				unsigned int blocks[block_size/sizeof(unsigned int)];
+				unsigned int* arr = blocks;
+
+				// Read the pointers in this block
+				read_data(fd, *ind_arr, (char *)blocks, block_size);
+
+				int iterations = block_size/sizeof(unsigned int);
+
+				// Iterate over block of direct pointers and copy data
+				while(iterations-- > 0 && to_read > 0) {
+					char buffer[block_size];
+
+					// Copy the max(to_read, block_size) from the data blocks
+					int read = read_data(fd, *arr, buffer, 
+						to_read > (int)block_size ? (int)block_size : to_read);
+
+					//printf("Read %d bytes\n", read);
+
+					// Write to output file buffer
+					write(fd2write, buffer, read);
+					to_read -= read;
+					arr++;
+				}
+
+				ind_arr++;
+			}
+		}
+	}
+
+	close(fd2write);
+
+	return 0;
 }
 
 int main(int argc, char **argv) {
@@ -57,6 +165,8 @@ int main(int argc, char **argv) {
 	// Just read the first superblock
 	read_super_block(fd, 0, &super);
 
+	/* PART 1 */
+
 	int global_ino = 0;
 
 	// Iterate over all groups to find jpg files
@@ -69,6 +179,7 @@ int main(int argc, char **argv) {
 		// Get the first inode table block in the group
 		off_t start_inode_table = locate_inode_table(ngroup, group);
 
+		// Iterate over all inodes to check for JPEGs
     	for (unsigned int ino = 1; ino < inodes_per_group; ino++) {
 			// ino is relative to the block
 			struct ext2_inode inode;
@@ -96,83 +207,101 @@ int main(int argc, char **argv) {
 
 			if (read > 0 && isjpeg(buffer))
 			{
-				printf("FOUND JPEG:  INODE %u\n", ino + global_ino);
+				printf("runscan: found jpeg file at inode %u\n", ino + global_ino);
 			}
 			else {
+				// Not a JPEG file
 				continue;
 			}
 
 			char filename[255];
 			sprintf(filename, "%s/file-%d.jpg", argv[2], ino + global_ino);
 
-			// Create new file in out directory
-			int fd2write = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-
-			// Copy image to out directory
-			int to_read = inode.i_size;
-
-			// The current data block pointed to by the inode
-			int j = 0;
-
-			// Use direct pointers first
-			while (j < EXT2_NDIR_BLOCKS && to_read > 0) {
-				char buffer[block_size];
-
-				// Copy the max(to_read, block_size) from the data blocks
-				int read = read_data(fd, inode.i_block[j++], buffer, 
-					to_read > (int)block_size ? (int)block_size : to_read);
-				printf("Read %d bytes\n", read);
-
-				// Write to output file buffer
-				write(fd2write, buffer, read);
-				to_read -= read;
-			}
-
-			// Use the single indirect block to read
-			if(to_read > 0) {
-				unsigned int blocks[block_size/sizeof(unsigned int)];
-
-				unsigned int* arr = blocks;
-
-				// Read one block of indirect blocks
-				read_data(fd, inode.i_block[EXT2_IND_BLOCK], (char *)blocks, block_size);
-
-				int iterations = block_size/sizeof(unsigned int);
-
-				while(iterations-- > 0 && to_read > 0) {
-					char buffer[block_size];
-
-					// Copy the max(to_read, block_size) from the data blocks
-					int read = read_data(fd, *arr, buffer, 
-						to_read > (int)block_size ? (int)block_size : to_read);
-					printf("Read %d bytes\n", read);
-
-					// Write to output file buffer
-					write(fd2write, buffer, read);
-					to_read -= read;
-					arr++;
-				}
-			}
-
-			close(fd2write);
-
-            			
-			// print i_block numberss
-			// for(unsigned int k=0; k < EXT2_N_BLOCKS; k++) {       
-			// 	if (k < EXT2_NDIR_BLOCKS)                                 /* direct blocks */
-			// 			printf("Block %2u : %u\n", k, inode.i_block[k]);
-			// 	else if (k == EXT2_IND_BLOCK)                             /* single indirect block */
-			// 			printf("Single   : %u\n", inode.i_block[k]);
-			// 	else if (k == EXT2_DIND_BLOCK)                            /* double indirect block */
-			// 			printf("Double   : %u\n", inode.i_block[k]);
-			// 	else if (k == EXT2_TIND_BLOCK)                            /* triple indirect block */
-			// 			printf("Triple   : %u\n", inode.i_block[k]);
-			// }
+			// Copy data of this inode to the outfile
+			copydata(fd, filename, start_inode_table, ino);
         }
 
 		// Increment global count after iterating over group
 		global_ino += inodes_per_group;
 	}
+
+	/* PART 2 */
+
+	// Iterate over all directories to find jpg file names
+	for (unsigned int ngroup = 0; ngroup < 1; ngroup++) {
+		struct ext2_group_desc* group = (struct ext2_group_desc *) malloc(sizeof(struct ext2_group_desc));
+
+		// Read the group descriptors
+		read_group_desc(fd, ngroup, group);
+
+		// Get the first inode table block in the group
+		off_t start_inode_table = locate_inode_table(ngroup, group);
+
+    	for (unsigned int ino = 1; ino < inodes_per_group; ino++) {
+			// ino is relative to the block
+			struct ext2_inode inode;
+
+			// Read the inode from the disk
+            read_inode(fd, start_inode_table, ino, &inode);
+
+			if (inode.i_blocks == 0)
+				continue;
+
+			// If not a directory, skip
+			if (!S_ISDIR(inode.i_mode))
+				continue;
+
+			char buffer[block_size];
+
+			// Read the first data block of directory, guaranteed to be in only one data block
+			read_data(fd, inode.i_block[0], buffer, block_size);
+			unsigned int offset = 0;
+
+			while (offset < block_size) {
+
+				// Read the first dir ent
+				struct ext2_dir_entry* dentry = (struct ext2_dir_entry*) &(buffer[offset]);
+
+				int name_len = dentry->name_len & 0xFF; // convert 2 bytes to 4 bytes properly
+
+				if (name_len <= 0)
+					break;
+
+				char name[EXT2_NAME_LEN];
+				strncpy(name, dentry->name, name_len);
+				name[name_len] = '\0';
+
+				// If inode is JPEG, copy to out directory
+
+				// This ino is global ino, subtract from groups per block * ngroup to get relative
+				int ino = dentry->inode;
+
+				int rel_ino = ino - (inodes_per_group * ngroup);
+
+				if (1) {
+					char filename[255 + EXT2_NAME_LEN];
+					sprintf(filename, "%s/%s", argv[2], name);
+
+					// Copy the  data contained in the inode to the outdir
+					copydata(fd, filename, start_inode_table, rel_ino);
+				}
+				
+
+				// Rounding up name_len to powers of 4
+				while(name_len % 4 != 0) {
+					name_len++;
+				}
+
+				// Finding hidden entries by offsetting through name_len instead of rec_len
+				offset += name_len + 8;
+			}
+
+
+        }
+	}
 	
 	close(fd);
+
+	printf("runScan: done recovering jpeg images\n");
+	return 0;
 }
