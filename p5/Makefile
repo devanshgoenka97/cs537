@@ -4,7 +4,7 @@ DFLAGS = -g
 DEPENDENCIES.C = read_ext2.c
 EXEC = runscan
 MAIN.C = runscan.c
-OUT = outdir
+OUT = output*
 
 default: main
 
