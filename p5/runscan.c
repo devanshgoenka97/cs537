@@ -21,6 +21,24 @@ int isjpeg(char* buffer) {
 	return is_jpg;
 }
 
+int isinodejpeg(int fd, off_t start_inode_table, int ino) {
+	struct ext2_inode inode;
+
+	// Read the inode from the disk
+	read_inode(fd, start_inode_table, ino, &inode);
+
+	char buffer[block_size];
+
+	int read = read_data(fd, inode.i_block[0], buffer, block_size);
+
+	if (read < 0 || !isjpeg(buffer)) {
+		// Not a JPEG file
+		return 0;
+	}
+
+	return 1;
+}
+
 //Utiliy to copy data from inode ino to outdir
 int copydata(int fd, char* filename, off_t start_inode_table, int ino) {
 	struct ext2_inode inode;
@@ -273,19 +291,16 @@ int main(int argc, char **argv) {
 
 				int rel_ino = ino - (inodes_per_group * ngroup);
 
-				if (1) {
+				if (isinodejpeg(fd, start_inode_table, rel_ino)) {
 					char filename[255 + EXT2_NAME_LEN];
 					sprintf(filename, "%s/%s", argv[2], name);
 
 					// Copy the  data contained in the inode to the outdir
 					copydata(fd, filename, start_inode_table, rel_ino);
 				}
-				
 
 				// Rounding up name_len to powers of 4
-				while(name_len % 4 != 0) {
-					name_len++;
-				}
+				name_len = ((name_len + 3)/4) * 4;
 
 				// Finding hidden entries by offsetting through name_len instead of rec_len
 				offset += name_len + 8;
